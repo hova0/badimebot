@@ -9,10 +9,10 @@ namespace hovabot
         static CountdownTimer ct;
         static int Main(string[] args)
         {
-            Console.WriteLine("Startup");
             ct = new CountdownTimer("00:01:10");
             if(args.Length > 0)
                 ct.SetCountdown(args[0]);
+            Console.WriteLine("Startup.  Timer set for {0}", ct.countdowntimer);
             
             ct.MessageEvent += OnAlert;
             ct.Finished += OnFinished;
@@ -20,7 +20,10 @@ namespace hovabot
             si = new SimpleIrc();
             si.Connected += Connected;
             si.Connect();
-            
+            si.MessageReceived += (x,y) => {
+                if(y.Message.StartsWith("!badime"))
+                    si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+            };
             Console.WriteLine("Press Enter to quit...");
             Console.ReadLine();
             return 0;
@@ -32,8 +35,8 @@ namespace hovabot
         }
 
         public static void OnFinished(object sender, EventArgs e) {
+            System.Threading.Thread.Sleep((int)new TimeSpan(0, 15, 0).TotalMilliseconds);
             si.Quit();
-            System.Threading.Thread.Sleep(2000);
             Environment.Exit(0);
         }
 

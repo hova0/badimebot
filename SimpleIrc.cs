@@ -13,6 +13,10 @@ namespace hovabot
         public static Meebey.SmartIrc4net.IrcClient _ircclient;
 
         public event EventHandler Connected;
+
+        public event EventHandler<MessageEvent> MessageReceived;
+
+
         public System.Threading.Thread t {get;set;}
         public void Connect() {
             ThreadStart ts = new ThreadStart(ThreadConnect);
@@ -38,7 +42,10 @@ namespace hovabot
             };
             c.OnRawMessage += (x, y) =>
             {
+                System.ConsoleColor backup = Console.ForegroundColor;
+                Console.ForegroundColor = System.ConsoleColor.DarkGray;
                 Console.WriteLine("   [RAW]   " + y.Data.RawMessage);
+                Console.ForegroundColor = backup;
             };
             c.OnConnecting += (x, y) =>
             {
@@ -54,6 +61,13 @@ namespace hovabot
                     Console.WriteLine("[WARN] No connected handler!");
             };
             c.OnConnected += (x, y) => { Console.WriteLine("[Connected]"); /* _connected = true; */ };
+            //Event relay
+            c.OnChannelMessage += (x,y) => {
+                if(y.Data.Channel == "#raspberryheaven" && MessageReceived != null) {
+                    MessageEvent me = new MessageEvent() { From = y.Data.From, Message = y.Data.Message};
+                    MessageReceived.Invoke(this, me);
+                }
+            };
             try
             {
                 c.Connect("irc.synirc.net", 6667);
@@ -110,22 +124,12 @@ namespace hovabot
             _ircclient.Disconnect();
         }
 
+        public class MessageEvent : EventArgs {
+            public string From;
+            public string Message;
 
-        // public void TestThread()
-        // {
-        //     var c = _ircclient;
-        //     System.Threading.Thread.Sleep(500);
-        //     c.RfcJoin(channel);
-        //     c.ListenOnce(true);
-        //     System.Threading.Thread.Sleep(500);
-        //     Console.WriteLine("Did join channel? " + c.IsJoined(channel).ToString());
-        //     c.SendMessage(Meebey.SmartIrc4net.SendType.Message, channel, "Hello World");
 
-        //     //c.RfcPrivmsg("#badimebot", "Hello World 2");
-
-        //     c.SendMessage(Meebey.SmartIrc4net.SendType.Message, channel, "Goodbye");
-        //     Console.WriteLine("Disconnecting...");
-        //     c.RfcQuit();
-        // }
+        }
+  
     }
 }

@@ -7,7 +7,7 @@ namespace hovabot
 
         public System.TimeSpan countdowntimer;
         System.TimeSpan lengthtimer;
-        //System.DateTime epoch;
+        System.DateTime epoch;
         System.Threading.CancellationToken ct;
         System.Threading.CancellationTokenSource cts = new System.Threading.CancellationTokenSource();
         System.Threading.Thread timerthread;
@@ -21,6 +21,7 @@ namespace hovabot
             new TimeSpan(0,10,0),
             new TimeSpan(0,5,0),
             new TimeSpan(0,3,0),
+            new TimeSpan(0,2,0),
             new TimeSpan(0,1,0),
             new TimeSpan(0,0,30),
             new TimeSpan(0,0,15),
@@ -44,6 +45,10 @@ namespace hovabot
         {
             if (MessageEvent != null)
                 MessageEvent.Invoke(this, new CountDownMessageEventArgs() { CountdownMessage = countdownmessage });
+        }
+
+        public TimeSpan GetElapsedTime() {
+            return DateTime.Now.Subtract(epoch);
         }
 
         public CountdownTimer(string timerstring)
@@ -77,7 +82,8 @@ namespace hovabot
 
         public void ThreadStarter()
         {
-            DateTime endtime =  DateTime.Now.Add(countdowntimer);;
+            DateTime endtime =  DateTime.Now.Add(countdowntimer);
+            epoch = endtime;
             TimeSpan lastalert = new TimeSpan(999, 999, 999);
             for (int i = 0; i < Alerts.Length; i++)
             {
