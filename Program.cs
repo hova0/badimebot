@@ -9,7 +9,8 @@ namespace hovabot
         static CountdownTimer ct;
         static int Main(string[] args)
         {
-            ct = new CountdownTimer("00:01:10");
+            Console.WriteLine("Badime Bot v1.01");
+            ct = new CountdownTimer("00:15:00");    //default 15 min countdown
             if(args.Length > 0)
                 ct.SetCountdown(args[0]);
             Console.WriteLine("Startup.  Timer set for {0}", ct.countdowntimer);
@@ -21,6 +22,7 @@ namespace hovabot
             si.Connected += Connected;
             si.Connect();
             si.MessageReceived += (x,y) => {
+                //Only respond to the !badime trigger
                 if(y.Message.StartsWith("!badime"))
                     si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
             };
@@ -35,7 +37,8 @@ namespace hovabot
         }
 
         public static void OnFinished(object sender, EventArgs e) {
-            System.Threading.Thread.Sleep((int)new TimeSpan(0, 15, 0).TotalMilliseconds);
+            // Sleep after the timer is done for 20 minutes (average length of an anime)
+            System.Threading.Thread.Sleep((int)new TimeSpan(0, 20, 0).TotalMilliseconds);
             si.Quit();
             Environment.Exit(0);
         }

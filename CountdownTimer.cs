@@ -6,7 +6,7 @@ namespace hovabot
     {
 
         public System.TimeSpan countdowntimer;
-        System.TimeSpan lengthtimer;
+        //System.TimeSpan lengthtimer;
         System.DateTime epoch;
         System.Threading.CancellationToken ct;
         System.Threading.CancellationTokenSource cts = new System.Threading.CancellationTokenSource();
@@ -55,15 +55,14 @@ namespace hovabot
         {
 
             countdowntimer = ParseTime(timerstring);
-            lengthtimer = new TimeSpan(0, 30, 0);   //defautl length of an anime
-            //epoch = DateTime.Now.Add(countdowntimer);
+            //lengthtimer = new TimeSpan(0, 30, 0);   //defautl length of an anime
 
         }
 
         public CountdownTimer(string timerstring, string lengthstring)
         {
             countdowntimer = ParseTime(timerstring);
-            lengthtimer = ParseTime(lengthstring);
+            //lengthtimer = ParseTime(lengthstring);
         }
 
         public void Start()
