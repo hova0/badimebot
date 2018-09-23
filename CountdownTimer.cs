@@ -13,7 +13,7 @@ namespace hovabot
         System.Threading.Thread timerthread;
         public event EventHandler<CountDownMessageEventArgs> MessageEvent;
         public event EventHandler Finished;
-
+        public string Title {get;set;}
         //public bool Finished { get; set; }
 
         private TimeSpan[] Alerts = new TimeSpan[] {
@@ -32,7 +32,10 @@ namespace hovabot
             new TimeSpan(0,0,2),
             new TimeSpan(0,0,1)
         };
-
+        /// <summary>
+        /// Sets the countdown timer based on a string.  Does not throw exceptions
+        /// </summary>
+        /// <param name="countdown">hh:mm:ss or mm:ss </param>
         public void SetCountdown(string countdown) {
             try {
             countdowntimer = ParseTime(countdown);
@@ -44,25 +47,23 @@ namespace hovabot
         public void OnMessageEvent(string countdownmessage)
         {
             if (MessageEvent != null)
-                MessageEvent.Invoke(this, new CountDownMessageEventArgs() { CountdownMessage = countdownmessage });
+                MessageEvent.Invoke(this, new CountDownMessageEventArgs() { 
+                    CountdownMessage = countdownmessage, 
+                    ElapsedTime = GetElapsedTime() 
+                    });
         }
-
+        /// <summary>
+        /// Returns elapsed time since the "epoch"  This can be positive AND negative, depending on if the countdown has passed 0 mark.
+        /// </summary>
+        /// <returns>See summary</returns>
         public TimeSpan GetElapsedTime() {
             return DateTime.Now.Subtract(epoch);
         }
 
         public CountdownTimer(string timerstring)
         {
-
+            Title = "BADIME";
             countdowntimer = ParseTime(timerstring);
-            //lengthtimer = new TimeSpan(0, 30, 0);   //defautl length of an anime
-
-        }
-
-        public CountdownTimer(string timerstring, string lengthstring)
-        {
-            countdowntimer = ParseTime(timerstring);
-            //lengthtimer = ParseTime(lengthstring);
         }
 
         public void Start()
@@ -75,11 +76,11 @@ namespace hovabot
 
             this.timerthread = new System.Threading.Thread(ts);
             this.timerthread.Start();
-            OnMessageEvent("Counting down to BADIME in " + countdowntimer.ToString());
+            OnMessageEvent(string.Format("Counting down to {0} in {1}",Title,  countdowntimer));
 
         }
 
-        public void ThreadStarter()
+        private void ThreadStarter()
         {
             DateTime endtime =  DateTime.Now.Add(countdowntimer);
             epoch = endtime;
@@ -103,29 +104,33 @@ namespace hovabot
                     if (_now > endtime.Subtract(Alerts[i]) && Alerts[i] < lastalert)
                     {
                         Console.WriteLine($"Alert triggered: {_now.ToString("hh:mm:ss")} > {endtime.Subtract(Alerts[i]).ToString("hh:mm:ss")}");
-                        //Console.WriteLine($"Last Alert = {lastalert}");
                         if(Alerts[i].TotalSeconds >= 60)
-                            OnMessageEvent(" /!\\ BADIME IN  " + Alerts[i].ToString() + $" /!\\");
+                            OnMessageEvent($" /!\\ {Title} IN  {Alerts[i]}  /!\\");
                         if(Alerts[i].TotalSeconds < 60)
-                            OnMessageEvent("" + Alerts[i].Seconds.ToString() + $"");
+                            OnMessageEvent(Alerts[i].Seconds.ToString());
                         lastalert = Alerts[i];
                         break;
                     }
                 }
             }
-            OnMessageEvent(" /!\\ BADIME /!\\");
+            if(ct.IsCancellationRequested)
+                return; //Timer did not finish, abort immediately
+            OnMessageEvent($" /!\\ {Title} /!\\");
             Console.WriteLine("Timer Finished");
             if(Finished != null)
                 Finished.Invoke(this, EventArgs.Empty);
             //Finished = true;
         }
-
+        /// <summary>
+        /// Immediately halt the countdown
+        /// </summary>
         public void Stop()
         {
             cts.Cancel();
             timerthread.Abort();
         }
 
+        // Creates a Timespan out of a string.  Supports hh:mm:ss and mm:ss formats
         public static System.TimeSpan ParseTime(string timerstring)
         {
 
@@ -149,8 +154,7 @@ namespace hovabot
     public class CountDownMessageEventArgs : EventArgs
     {
         public string CountdownMessage;
-
-        //public CountDownMessageEventArgs()
+        public TimeSpan ElapsedTime;
     }
 
 }
