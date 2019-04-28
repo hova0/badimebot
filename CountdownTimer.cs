@@ -36,12 +36,14 @@ namespace hovabot
         /// Sets the countdown timer based on a string.  Does not throw exceptions
         /// </summary>
         /// <param name="countdown">hh:mm:ss or mm:ss </param>
-        public void SetCountdown(string countdown) {
+        public bool SetCountdown(string countdown) {
             try {
-            countdowntimer = ParseTime(countdown);
+                countdowntimer = ParseTime(countdown);
+                return true;
             }catch(Exception e) {
                 Console.WriteLine(e.Message);
             }
+            return false;
         }
 
         public void OnMessageEvent(string countdownmessage)

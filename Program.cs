@@ -2,33 +2,46 @@
 
 namespace hovabot
 {
-    #pragma warning disable CS1591 
+#pragma warning disable CS1591
     public class Program
     {
-        
-        static SimpleIrc si ;
+
+        static SimpleIrc si;
         static CountdownTimer ct;
         static string Title = "BADIME";
         static int Main(string[] args)
         {
             Console.WriteLine("Badime Bot v1.02");
+            if (args.Length == 0)
+            {
+                ShowHelp();
+                return 1;
+            }
+
             ct = new CountdownTimer("00:15:00");    //default 15 min countdown
-            if(args.Length > 0)
-                ct.SetCountdown(args[0]);
+            if (args.Length > 0)
+                if (!ct.SetCountdown(args[0]))
+                {
+                    //womp womp parse error
+                    ShowHelp();
+                    return 1;
+                }
+
             Console.WriteLine("Startup.  Timer set for {0}", ct.countdowntimer);
-            if(args.Length > 1)
+            if (args.Length > 1)
                 Title = args[1];
 
             ct.Title = Title;
             ct.MessageEvent += OnAlert;
             ct.Finished += OnFinished;
-            
+
             si = new SimpleIrc();
             si.Connected += Connected;
             si.Connect();
-            si.MessageReceived += (x,y) => {
+            si.MessageReceived += (x, y) =>
+            {
                 //Only respond to the !badime trigger
-                if(y.Message.StartsWith("!badime"))
+                if (y.Message.StartsWith("!badime"))
                     si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
             };
             Console.WriteLine("Press Enter to quit...");
@@ -36,7 +49,13 @@ namespace hovabot
             return 0;
         }
 
-        public static void OnAlert(object sender, CountDownMessageEventArgs ce) {
+        public static void ShowHelp()
+        {
+            Console.WriteLine("badimebot <00:00:00> <Title of thing to countdown to>");
+        }
+
+        public static void OnAlert(object sender, CountDownMessageEventArgs ce)
+        {
             //Console.WriteLine("[IRC] " + ce.CountdownMessage);
             si.SendMessage(ce.CountdownMessage);
         }
@@ -46,7 +65,8 @@ namespace hovabot
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        public static void OnFinished(object sender, EventArgs e) {
+        public static void OnFinished(object sender, EventArgs e)
+        {
             // Sleep after the timer is done for 20 minutes (average length of an anime)
             System.Threading.Thread.Sleep((int)new TimeSpan(0, 20, 0).TotalMilliseconds);
             si.Quit();
@@ -57,7 +77,8 @@ namespace hovabot
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        public static void Connected(object sender, EventArgs e) {
+        public static void Connected(object sender, EventArgs e)
+        {
             Console.WriteLine("[IRC] Connected Event Fired");
             ct.Start();
         }
