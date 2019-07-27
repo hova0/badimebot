@@ -43,6 +43,18 @@ namespace hovabot
                 //Only respond to the !badime trigger
                 if (y.Message.StartsWith("!badime"))
                     si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+
+            };
+            si.PrivateMessageReceived += (x,y) => 
+            {
+                if(y.Message.ToLower().StartsWith("!badime"))
+                    si.SendMessage(y.From, string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+                if(y.From == "hova" && y.Message.StartsWith("!shutdown")) 
+                {
+                    PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
+                    si.Disconnect();
+                    Environment.Exit(0);
+                }
             };
             Console.WriteLine("Press Enter to quit...");
             Console.ReadLine();
@@ -81,6 +93,13 @@ namespace hovabot
         {
             Console.WriteLine("[IRC] Connected Event Fired");
             ct.Start();
+        }
+
+        private static void PrintToConsoleWithColor(string message, System.ConsoleColor color) {
+            System.ConsoleColor backup = Console.ForegroundColor;
+            Console.ForegroundColor = color;
+            System.Console.WriteLine(message);
+            Console.ForegroundColor = backup;
         }
 
     }

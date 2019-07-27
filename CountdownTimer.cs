@@ -2,6 +2,7 @@ using System;
 
 namespace hovabot
 {
+#pragma warning disable  CS1591    // 
     public class CountdownTimer
     {
 
