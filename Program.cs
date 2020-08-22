@@ -43,6 +43,8 @@ namespace hovabot
                 //Only respond to the !badime trigger
                 if (y.Message.StartsWith("!badime"))
                     si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+                if (y.Message.StartsWith("@badime"))
+                    si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
 
             };
             si.PrivateMessageReceived += (x,y) => 
