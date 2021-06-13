@@ -11,7 +11,7 @@ namespace hovabot
         static string Title = "BADIME";
         static int Main(string[] args)
         {
-            Console.WriteLine("Badime Bot v1.02");
+            Console.WriteLine("Badime Bot v1.03");
             if (args.Length == 0)
             {
                 ShowHelp();
@@ -49,9 +49,9 @@ namespace hovabot
             };
             si.PrivateMessageReceived += (x,y) => 
             {
-                if(y.Message.ToLower().StartsWith("!badime"))
+                if(y.Message.ToLower().StartsWith("!badime") || y.Message.ToLower().StartsWith("@badime")  )
                     si.SendMessage(y.From, string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
-                if(y.From == "hova" && y.Message.StartsWith("!shutdown")) 
+                if(y.From == "hova" && y.Message.Length > 1 && y.Message.Substring(1).StartsWith("shutdown")) 
                 {
                     PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
                     si.Disconnect();

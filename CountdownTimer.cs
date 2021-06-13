@@ -108,7 +108,7 @@ namespace hovabot
                     {
                         Console.WriteLine($"Alert triggered: {_now.ToString("hh:mm:ss")} > {endtime.Subtract(Alerts[i]).ToString("hh:mm:ss")}");
                         if(Alerts[i].TotalSeconds >= 60)
-                            OnMessageEvent($" /!\\ {Title} IN  {Alerts[i]}  /!\\");
+                            OnMessageEvent($"  {Title} IN  {Alerts[i]}  ");
                         if(Alerts[i].TotalSeconds < 60)
                             OnMessageEvent(Alerts[i].Seconds.ToString());
                         lastalert = Alerts[i];
@@ -118,7 +118,7 @@ namespace hovabot
             }
             if(ct.IsCancellationRequested)
                 return; //Timer did not finish, abort immediately
-            OnMessageEvent($" /!\\ {Title} /!\\");
+            OnMessageEvent($" {Title} ");
             Console.WriteLine("Timer Finished");
             if(Finished != null)
                 Finished.Invoke(this, EventArgs.Empty);
@@ -131,6 +131,11 @@ namespace hovabot
         {
             cts.Cancel();
             timerthread.Abort();
+        }
+
+        public void SetCountdown(string title, TimeSpan time_until_start) 
+        {
+
         }
 
         // Creates a Timespan out of a string.  Supports hh:mm:ss and mm:ss formats

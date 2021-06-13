@@ -48,7 +48,7 @@ namespace hovabot
             };
             c.OnRawMessage += (x, y) =>
             {
-                PrintToConsoleWithColor("   [RAW]   " + y.Data.RawMessage, System.ConsoleColor.DarkGray);
+                //PrintToConsoleWithColor("   [RAW]   " + y.Data.RawMessage, System.ConsoleColor.DarkGray);
             };
             c.OnConnecting += (x, y) =>
             {
