@@ -45,6 +45,7 @@ namespace hovabot
             c.OnError += (x, y) =>
             {
                 PrintToConsoleWithColor(y.ErrorMessage, ConsoleColor.Red);
+                c.Disconnect();
             };
             c.OnRawMessage += (x, y) =>
             {

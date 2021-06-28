@@ -75,7 +75,7 @@ namespace hovabot
                 return;
             if (ct == null)
                 ct = cts.Token;
-            System.Threading.ThreadStart ts = new System.Threading.ThreadStart(ThreadStarter);
+            System.Threading.ThreadStart ts = new System.Threading.ThreadStart(CountdownThread);
 
             this.timerthread = new System.Threading.Thread(ts);
             this.timerthread.Start();
@@ -83,7 +83,7 @@ namespace hovabot
 
         }
 
-        private void ThreadStarter()
+        private void CountdownThread()
         {
             DateTime endtime =  DateTime.Now.Add(countdowntimer);
             epoch = endtime;
@@ -97,7 +97,6 @@ namespace hovabot
             }
             Console.WriteLine("Time is now " + DateTime.Now.ToString("hh:mm:ss"));
             Console.WriteLine("Timer Started for " + countdowntimer.ToString() + " counting down to " + endtime.ToString("hh:mm:ss"));
-            Console.WriteLine("Last Alert set to " + lastalert.ToString());
             while (DateTime.Now < endtime && !ct.IsCancellationRequested)
             {
                 System.Threading.Thread.Sleep(100);
@@ -108,7 +107,7 @@ namespace hovabot
                     {
                         Console.WriteLine($"Alert triggered: {_now.ToString("hh:mm:ss")} > {endtime.Subtract(Alerts[i]).ToString("hh:mm:ss")}");
                         if(Alerts[i].TotalSeconds >= 60)
-                            OnMessageEvent($"  {Title} IN  {Alerts[i]}  ");
+                            OnMessageEvent($"{Title} IN {Alerts[i]}  ");
                         if(Alerts[i].TotalSeconds < 60)
                             OnMessageEvent(Alerts[i].Seconds.ToString());
                         lastalert = Alerts[i];
@@ -118,7 +117,7 @@ namespace hovabot
             }
             if(ct.IsCancellationRequested)
                 return; //Timer did not finish, abort immediately
-            OnMessageEvent($" {Title} ");
+            OnMessageEvent($"{Title} starting now!");
             Console.WriteLine("Timer Finished");
             if(Finished != null)
                 Finished.Invoke(this, EventArgs.Empty);
@@ -130,7 +129,7 @@ namespace hovabot
         public void Stop()
         {
             cts.Cancel();
-            timerthread.Abort();
+            //timerthread.Abort();
         }
 
         public void SetCountdown(string title, TimeSpan time_until_start) 
