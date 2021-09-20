@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using badimebot;
 
 public interface IServerMessage
 {
@@ -24,7 +25,7 @@ public class ServerNumericReply : IServerMessage
 		if(string.IsNullOrEmpty(Nick))
 			throw new System.Exception("Nick must be set before calling TryParse");
 
-		var wordenum = GetWords(rawmsg).GetEnumerator();
+		var wordenum = rawmsg.GetWords().GetEnumerator();
 		List<string> sections = new List<string>();
 
 		if (wordenum.MoveNext() == false) return false;
@@ -55,21 +56,7 @@ public class ServerNumericReply : IServerMessage
 		return true;
 	}
 
-	public static IEnumerable<string> GetWords(string fullstring)
-	{
-		int index = 0;
-		while (true)
-		{
-			if (fullstring.IndexOf(' ', index) == -1)
-			{
-				yield return fullstring.Substring(index);
-				yield break;
-			}
-			string ret = fullstring.Substring(index, fullstring.IndexOf(' ', index) - index);
-			index += ret.Length + 1;
-			yield return ret;
-		}
-	}
+	
 
 
 }
@@ -79,18 +66,29 @@ public class ChatMessage : IServerMessage {
 	public string From {get;set;}
 	public string Channel {get;set;}
 	public string Message {get;set;}
- /*
+	/*
 
-RAW :hova!hova@Clk-E1EA8378 PRIVMSG #raspberryheaven :hello
-RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
+   RAW :hova!hova@Clk-E1EA8378 PRIVMSG #raspberryheaven :hello
+   RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
 
- */
+	*/
+	public ChatMessage() { }
+	public ChatMessage(string rawmsg)
+    {
+		if (TryParse(rawmsg) == false)
+			throw new System.FormatException();
+    }
 
+	/// <summary>
+	/// Attempts to parse a PRIVMSG into components
+	/// </summary>
+	/// <param name="rawmsg">The raw IRC Message</param>
+	/// <returns>True is it was parsed.  This object will then be populated</returns>
 	public bool TryParse(string rawmsg)
 	{
 		if(string.IsNullOrEmpty(Nick))
 			throw new System.Exception("Nick must be set before calling TryParse");
-		var words = GetWordsWithIndex(rawmsg).GetEnumerator();
+		var words = rawmsg.GetWordsWithIndex().GetEnumerator();
 		if(words.MoveNext() == false) return false;
 		string rawfrom = words.Current.word;
 		if(rawfrom.StartsWith(":") && rawfrom.Contains('!'))
@@ -114,19 +112,5 @@ RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
 		return true;
 	}
 		
-	public static IEnumerable<(string word, int index)> GetWordsWithIndex(string fullstring)
-	{
-		int index = 0;
-		while (true)
-		{
-			if (fullstring.IndexOf(' ', index) == -1)
-			{
-				yield return (fullstring.Substring(index), index);
-				yield break;
-			}
-			string ret = fullstring.Substring(index, fullstring.IndexOf(' ', index) - index);
-			yield return (ret, index);
-			index += ret.Length + 1;
-		}
-	}
+	
 }

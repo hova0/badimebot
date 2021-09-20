@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\badimebot.csproj" />
+    <ProjectReference Include="../src/badimebot.csproj" />
   </ItemGroup>
 
 </Project>

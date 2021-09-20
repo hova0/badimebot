@@ -1,99 +1,85 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace hovabot
+namespace badimebot
 {
 #pragma warning disable CS1591
 	public class Program
 	{
 
 		static IIrc si;
-		static CountdownTimer ct;
-		static string Title = "BADIME";
+
 		static int Main(string[] args)
 		{
-			Console.WriteLine("Badime Bot v1.03");
-			if (args.Length == 0)
-			{
-				ShowHelp();
-				return 1;
-			}
+			Console.WriteLine("Badime Bot v2.00");
+		
+			//ct = new CountdownTimer();    //default 15 min countdown
+			//if (args.Length > 0)
+			//	if (!ct.SetCountdown(args[0]))
+			//	{
+			//		//womp womp parse error
+			//		ShowHelp();
+			//		return 1;
+			//	}
 
-			ct = new CountdownTimer("00:15:00");    //default 15 min countdown
-			if (args.Length > 0)
-				if (!ct.SetCountdown(args[0]))
-				{
-					//womp womp parse error
-					ShowHelp();
-					return 1;
-				}
+			//if (args.Length > 1)
+			//	Title = args[1];
 
-			Console.WriteLine("Startup.  Timer set for {0}", ct.countdowntimer);
-			if (args.Length > 1)
-				Title = args[1];
-
-			ct.Title = Title;
-			ct.MessageEvent += OnAlert;
-			ct.Finished += OnFinished;
+			//ct.Title = Title;
+			//ct.MessageEvent += OnAlert;
+			//ct.Finished += OnFinished;
 
 			si = new BasicIrc();
 			si.Connect("127.0.0.1", "badimebot");
 			Console.WriteLine("Connected");
 			si.Join("#raspberryheaven");
 			Console.WriteLine("Joined channel");
+			CountdownTimer animetimer = new CountdownTimer();
+			animetimer.MessageEvent += (x, y) =>
+			{
+				si.SendMessage(y.CountdownMessage);
+			};
 
 			si.ChannelMessageReceived += (x, y) =>
 			{
 				//Only respond to the !badime trigger
-				if (y.Message.ToLower().StartsWith("!badime"))
-					si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
-				if (y.Message.ToLower().StartsWith("@badime"))
-					si.SendMessage(string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+				if (IsValidBotCommand(y.Message, "badime"))
+					si.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
+				//if (y.Message.ToLower().StartsWith("@badime"))
+				//	si.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
 
 			};
 			si.PrivateMessageReceived += (x, y) =>
 			{
-				Console.WriteLine("[DEBUG] Private Message Received" + y.Message);
-				if (y.Message.ToLower().StartsWith("!badime") || y.Message.ToLower().StartsWith("@badime"))
-					si.PrivateMessage(y.From, string.Format("Time Elapsed {0}", ct.GetElapsedTime()));
+				
+				if(IsValidBotCommand(y.Message, "badime"))
+					si.PrivateMessage(y.From, string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
 				if (y.From == "hova")
 				{
-					if (IsValidBotCommand(y.Message, "shutdown"))
+					if (y.Message == "shutdown")
 					{
 						PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
 						si.Disconnect();
+						animetimer.Stop();
 						Environment.Exit(0);
 					}
-					if (IsValidBotCommand(y.Message, "countdown"))
-					{
-						// Prototype start new countdown
-						string[] countdownargs = SeperateIRCCommandArguments(y.Message);
+				
+					if(y.Message.StartsWith("add"))
+                    {
+						CountdownItem ci = CountdownTimer.Parse(y.Message);
 
-						CountdownTimer newct = new CountdownTimer("00:05:00");
-						int offset = 1;
-						if (countdownargs[offset] == "to")
-							offset++;
-						newct.Title = countdownargs[offset];
-						offset++;
-						if (countdownargs[offset] == "in")
-							offset++;
-						if (newct.SetCountdown(countdownargs[offset]) == false)
-							return; // Exit early, bad countdown arg
-
-						//Stop the old and Start the new
-						ct.Stop();
-						ct.MessageEvent -= OnAlert;
-						ct.Finished -= OnFinished;
-						ct = newct;
-						ct.MessageEvent += OnAlert;
-						ct.Finished += OnFinished;
-						ct.Start();
-					}
+                        if (ci != CountdownItem.Empty)
+                        {
+							animetimer.Enqueue(ci);
+							si.PrivateMessage(y.From, $"Enqueued {ci.Title} for {ci.Length}");
+                        }
+                    }
 				}
 			};
-			ct.Start();
+			animetimer.Start();
 			Console.WriteLine("Press Enter to quit...");
 			Console.ReadLine();
+			animetimer.Stop();
 			si.Disconnect();
 			return 0;
 		}
@@ -111,6 +97,8 @@ namespace hovabot
 
 		private static string[] SeperateIRCCommandArguments(string fullmessage)
 		{
+			// No longer used, because we refactored some stuff into an irc library
+
 			List<string> finalarguments = new List<string>();
 			string[] fullsplit = fullmessage.Split(' ');
 			string intermediatearg = "";
@@ -181,7 +169,6 @@ namespace hovabot
 		public static void Connected(object sender, EventArgs e)
 		{
 			Console.WriteLine("[IRC] Connected Event Fired");
-			ct.Start();
 		}
 
 		private static void PrintToConsoleWithColor(string message, System.ConsoleColor color)

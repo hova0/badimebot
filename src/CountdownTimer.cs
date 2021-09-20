@@ -1,21 +1,32 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
-namespace hovabot
+namespace badimebot
 {
 #pragma warning disable  CS1591    // 
     public class CountdownTimer
     {
+        private object _lockobject = new object();
 
-        public System.TimeSpan countdowntimer;
-        //System.TimeSpan lengthtimer;
-        System.DateTime epoch;
+      
+        public enum CountdownState
+        {
+            Idle,
+            PreCountdown,
+            PostCountdown
+        }
+        public Queue<CountdownItem> CountdownList { get; set; } = new Queue<CountdownItem>();
+        public CountdownItem CurrentItem { get; set; }
+        CountdownState _state = CountdownState.Idle;
+
+
         System.Threading.CancellationToken ct;
-        System.Threading.CancellationTokenSource cts = new System.Threading.CancellationTokenSource();
+        System.Threading.CancellationTokenSource cts;
         System.Threading.Thread timerthread;
         public event EventHandler<CountDownMessageEventArgs> MessageEvent;
-        public event EventHandler Finished;
-        public string Title {get;set;}
-        //public bool Finished { get; set; }
+        public bool SuppressMessages { get; set; }
+
 
         private TimeSpan[] Alerts = new TimeSpan[] {
             new TimeSpan(0,15,0),
@@ -33,112 +44,187 @@ namespace hovabot
             new TimeSpan(0,0,2),
             new TimeSpan(0,0,1)
         };
-        /// <summary>
-        /// Sets the countdown timer based on a string.  Does not throw exceptions
-        /// </summary>
-        /// <param name="countdown">hh:mm:ss or mm:ss </param>
-        public bool SetCountdown(string countdown) {
-            try {
-                countdowntimer = ParseTime(countdown);
-                return true;
-            }catch(Exception e) {
-                Console.WriteLine(e.Message);
-            }
-            return false;
+
+        public CountdownTimer() {
+            cts = new System.Threading.CancellationTokenSource();
+            ct = cts.Token;
         }
+
+        public void Enqueue(string Anime, TimeSpan Countdown, TimeSpan Length)
+        {
+            CountdownItem item = new CountdownItem();
+            item.Title = Anime;
+            item.Length = Length;
+            item.PreCountdown = Countdown;
+
+            CountdownList.Enqueue(item);
+        }
+        public void Enqueue(CountdownItem item)
+        {
+            CountdownList.Enqueue(item);
+        }
+
 
         public void OnMessageEvent(string countdownmessage)
         {
+            if (SuppressMessages)
+                return;
             if (MessageEvent != null)
-                MessageEvent.Invoke(this, new CountDownMessageEventArgs() { 
-                    CountdownMessage = countdownmessage, 
-                    ElapsedTime = GetElapsedTime() 
-                    });
+                MessageEvent.Invoke(this, new CountDownMessageEventArgs()
+                {
+                    CountdownMessage = countdownmessage,
+                    ElapsedTime = GetElapsedTime()
+                });
         }
         /// <summary>
         /// Returns elapsed time since the "epoch"  This can be positive AND negative, depending on if the countdown has passed 0 mark.
         /// </summary>
         /// <returns>See summary</returns>
-        public TimeSpan GetElapsedTime() {
-            return DateTime.Now.Subtract(epoch);
-        }
-
-        public CountdownTimer(string timerstring)
+        public TimeSpan GetElapsedTime()
         {
-            Title = "BADIME";
-            countdowntimer = ParseTime(timerstring);
+            return DateTime.Now.Subtract(CurrentItem.Epoch);
         }
 
         public void Start()
         {
             if (timerthread != null)
                 return;
-            if (ct == null)
-                ct = cts.Token;
             System.Threading.ThreadStart ts = new System.Threading.ThreadStart(CountdownThread);
-
+            ct = cts.Token;
             this.timerthread = new System.Threading.Thread(ts);
             this.timerthread.Start();
-            OnMessageEvent(string.Format("Counting down to {0} in {1}",Title,  countdowntimer));
+            //OnMessageEvent(string.Format("Counting down to {0} in {1}",Title,  countdowntimer));
 
         }
 
+        /// <summary>
+        /// Main countdown thread.
+        /// </summary>
         private void CountdownThread()
         {
-            DateTime endtime =  DateTime.Now.Add(countdowntimer);
-            epoch = endtime;
-            TimeSpan lastalert = new TimeSpan(999, 999, 999);
-            for (int i = 0; i < Alerts.Length; i++)
+
+            while (ct.IsCancellationRequested == false)
             {
-                if (countdowntimer < Alerts[i])
+                switch (_state)
                 {
-                    lastalert = Alerts[i];
-                }
-            }
-            Console.WriteLine("Time is now " + DateTime.Now.ToString("hh:mm:ss"));
-            Console.WriteLine("Timer Started for " + countdowntimer.ToString() + " counting down to " + endtime.ToString("hh:mm:ss"));
-            while (DateTime.Now < endtime && !ct.IsCancellationRequested)
-            {
-                System.Threading.Thread.Sleep(100);
-                DateTime _now = DateTime.Now;
-                for (int i = 0; i < Alerts.Length; i++)
-                {
-                    if (_now > endtime.Subtract(Alerts[i]) && Alerts[i] < lastalert)
-                    {
-                        Console.WriteLine($"Alert triggered: {_now.ToString("hh:mm:ss")} > {endtime.Subtract(Alerts[i]).ToString("hh:mm:ss")}");
-                        if(Alerts[i].TotalSeconds >= 60)
-                            OnMessageEvent($"{Title} IN {Alerts[i]}  ");
-                        if(Alerts[i].TotalSeconds < 60)
-                            OnMessageEvent(Alerts[i].Seconds.ToString());
-                        lastalert = Alerts[i];
+                    case CountdownState.Idle:
+                        while (ct.IsCancellationRequested == false)
+                        {
+                            lock (_lockobject)
+                            {
+                                if (CountdownList.Count != 0)
+                                {
+                                    _state = CountdownState.PreCountdown;
+                                    break;
+                                }
+                            }
+                            System.Threading.Thread.Sleep(1000);
+                        }
                         break;
-                    }
+                    case CountdownState.PreCountdown:
+                        CountdownItem _nextItem;
+                        lock (_lockobject)
+                        {
+                            _nextItem = CountdownList.Dequeue();
+                        }
+                        _nextItem.Epoch = DateTime.Now.Add(_nextItem.PreCountdown);
+                        CurrentItem = _nextItem;
+                        //if ((CurrentItem.Epoch - DateTime.Now).TotalSeconds < 5)
+                        //    throw new Exception($"Epoch calculation wrong. Epoch = {CurrentItem.Epoch} Now = {DateTime.Now}  PreCountdown = {CurrentItem.PreCountdown} ");
+
+                        int _alertIndex = 0;
+                        for (int i = 0; i < Alerts.Length; i++)
+                            if (Alerts[i] <= CurrentItem.PreCountdown)
+                            {
+                                _alertIndex = i;
+                                break;
+                            }
+
+                        while (ct.IsCancellationRequested == false)
+                        {
+                            if ((CurrentItem.Epoch - DateTime.Now) < Alerts[_alertIndex])
+                            {
+                                // alart
+                                Console.WriteLine($"{(CurrentItem.Epoch - DateTime.Now).TotalSeconds} < {Alerts[_alertIndex]}");
+                                PrintAlert(CurrentItem, Alerts[_alertIndex]);
+                                if (_alertIndex == Alerts.Length - 1)
+                                {   // Ran out of alerts, less than one second left
+                                    _state = CountdownState.PostCountdown;
+                                    break;
+                                }
+                                _alertIndex++;
+                            }
+                            System.Threading.Thread.Sleep(100);
+                        }
+                        break;
+                    case CountdownState.PostCountdown:
+                        if (DateTime.Now > (CurrentItem.Epoch + CurrentItem.Length))
+                        {
+                            lock (_lockobject)
+                            {
+                                if (CountdownList.Count == 0)
+                                {
+                                    // no more things to countdown
+                                    _state = CountdownState.Idle;
+                                    OnMessageEvent("THE END N SHIT");
+                                }
+                                else
+                                {
+                                    // Move to next anime  (PreCountdown will dequeue)
+                                    _state = CountdownState.PreCountdown;
+                                }
+                            }
+                        }
+                        // Long sleep
+                        System.Threading.Thread.Sleep(1000);
+                        break;
                 }
             }
-            if(ct.IsCancellationRequested)
-                return; //Timer did not finish, abort immediately
-            OnMessageEvent($"{Title} starting now!");
-            Console.WriteLine("Timer Finished");
-            if(Finished != null)
-                Finished.Invoke(this, EventArgs.Empty);
-            //Finished = true;
+            // end of loop
         }
+
+        private void PrintAlert(CountdownItem item, TimeSpan alerttime, CountdownState state = CountdownState.PreCountdown)
+        {
+            if (state == CountdownState.PostCountdown)
+                OnMessageEvent($"{item.Title} elapsed time is {DateTime.Now - item.Epoch}");
+            else if (state == CountdownState.PreCountdown)
+                OnMessageEvent($"{item.Title} in {alerttime}");
+            else
+                OnMessageEvent($"{item.Title} starting!");
+            //OnMessageEvent($"{item.Title} in {alerttime}");
+        }
+
         /// <summary>
         /// Immediately halt the countdown
         /// </summary>
         public void Stop()
         {
             cts.Cancel();
-            //timerthread.Abort();
         }
 
-        public void SetCountdown(string title, TimeSpan time_until_start) 
-        {
 
+        public static CountdownItem Parse(string message)
+        {
+            // add Anime Title for 25:00 in 15:00
+            // add <title> for <length> in <countdown>
+            System.Text.RegularExpressions.Regex r = new System.Text.RegularExpressions.Regex(@"add\s(.*?)\sfor\s(.*?)\sin\s(.*)");
+            if (r.IsMatch(message))
+            {
+                var m = r.Match(message);
+
+                CountdownItem ci = new CountdownItem()
+                {
+                    Title = m.Groups[1].Value,
+                    Length = ParseTime(m.Groups[2].Value),
+                    PreCountdown = ParseTime(m.Groups[3].Value)
+                };
+                return ci;
+            }
+            return CountdownItem.Empty;
         }
 
         // Creates a Timespan out of a string.  Supports hh:mm:ss and mm:ss formats
-        public static System.TimeSpan ParseTime(string timerstring)
+        private static TimeSpan ParseTime(string timerstring)
         {
 
             var timeslices = timerstring.Split(':');

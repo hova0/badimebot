@@ -2,6 +2,7 @@ using System;
 using System.Net.Sockets;
 using System.Net.Security;
 using System.Collections.Generic;
+using System.Threading;
 
 public class BasicIrc : IIrc, IDisposable
 {
@@ -16,14 +17,24 @@ public class BasicIrc : IIrc, IDisposable
 	public bool Connected { get; internal set; }
 	private string _currentChannel;
 	public string Nick {get;set;}
-
+	private CancellationToken _ct = CancellationToken.None;
+	private CancellationTokenSource _cts = new CancellationTokenSource();
 	public volatile bool _LookingforServerResponse = false;
 	public volatile int _LookingforServerResponseCode=0;
+	public System.Threading.ManualResetEventSlim _LookingforServerResponseEvent = new ManualResetEventSlim();
 
 	private volatile bool _server_message_connected = false;
 
+	private System.IO.StreamWriter irclog;
+
 	public void Connect(string server, string nick)
 	{
+		string irclogfilename = GetIrcLogfilename();
+		irclog = new System.IO.StreamWriter(irclogfilename);
+		irclog.AutoFlush = true;
+		Console.WriteLine($"Logging to {irclogfilename}");
+
+		_ct = _cts.Token;
 		try
 		{
 #if DEBUG
@@ -33,12 +44,14 @@ public class BasicIrc : IIrc, IDisposable
 				return true;
 			};
 #endif
+
 			TcpClient t = new TcpClient(server, 6697);
 			SslStream s = new SslStream(t.GetStream());
 			s.AuthenticateAsClient(server);
 			_incomingStream = new System.IO.StreamReader(s);
 			_outgoingStream = new System.IO.StreamWriter(s);
 			_ircTcpClient = t;
+			irclog.WriteLine($"Connected to {server}:6697");
 		}
 		catch (Exception e)
 		{
@@ -49,6 +62,8 @@ public class BasicIrc : IIrc, IDisposable
 			_incomingStream = new System.IO.StreamReader(t.GetStream());
 			_outgoingStream = new System.IO.StreamWriter(t.GetStream());
 			_ircTcpClient = t;
+			irclog.WriteLine($"Failed to connec via SSL: {e.Message}.");
+			irclog.WriteLine($"Connected to {server}:6667");
 		}
 		_outgoingStream.AutoFlush = true;
 		_MessagePumpThread = new System.Threading.Thread(_MessagePump);
@@ -66,7 +81,7 @@ public class BasicIrc : IIrc, IDisposable
 
 	}
 
-	// Pump for IRC messages
+	// Thread Pump for IRC messages
 	private void _MessagePump()
 	{
 		ServerNumericReply snr = new ServerNumericReply();
@@ -75,12 +90,14 @@ public class BasicIrc : IIrc, IDisposable
 		snr.Nick = Nick;
 		while (_ircTcpClient.Connected && _incomingStream.EndOfStream == false)
 		{
-
+			if(_ct.IsCancellationRequested)
+				break;
 			string _incoming = _incomingStream.ReadLine();
 			if(_incoming == null) {
 				break;	// end?
 			}
-			Console.WriteLine("RAW " + _incoming);
+			//Console.WriteLine("RAW " + _incoming);
+			irclog.WriteLine(_incoming);
 			if (_incoming.StartsWith("PING"))
 				_outgoingStream.WriteLine($"PONG {_incoming.Substring(5)}");
 
@@ -92,8 +109,8 @@ public class BasicIrc : IIrc, IDisposable
 				}
 				if(_LookingforServerResponse && snr.ReplyCode == _LookingforServerResponseCode) {
 					_LookingforServerResponse = false;
+					_LookingforServerResponseEvent.Set();
 				}
-					
 			}
 			if(_incoming.Contains("PRIVMSG") && msg.TryParse(_incoming) ) {
 				if(msg.Channel == null) 
@@ -124,26 +141,39 @@ RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
 	
 	public void Disconnect()
 	{
+		if (_disposed)
+			throw new ObjectDisposedException(nameof(BasicIrc));
+		_cts.Cancel();
 		Console.WriteLine("DISCONNECT");
 		_outgoingStream.WriteLine("QUIT");
 		_ircTcpClient.Close();
 		_ircTcpClient = null;
 
 	}
-
+	private bool _disposed = false;
 	public void Dispose()
 	{
-		_ircTcpClient?.Close();
+		if (!_disposed)
+		{
+			if (Connected)
+				Disconnect();
+
+			irclog.Close();
+			irclog.Dispose();
+			_ircTcpClient?.Close();
+		}
 	}
 
 	public void Join(string channel)
 	{
+		_LookingforServerResponseEvent.Reset();
 		if (!channel.StartsWith("#"))
 			channel = "#" + channel;
 		_outgoingStream.WriteLine($"JOIN {channel}");
 		_LookingforServerResponse = true;
 		_LookingforServerResponseCode = 366;
-		WaitforServer();
+		_LookingforServerResponseEvent.Wait();
+		//WaitforServer();
 		_currentChannel = channel;
 	}
 
@@ -157,7 +187,23 @@ RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
 
 	public void SendMessage(string message)
 	{	
-		Console.WriteLine($"RAWSEND PRIVMSG {this._currentChannel} :{message}");
 		_outgoingStream.WriteLine($"PRIVMSG {this._currentChannel} :{message}");
 	}
+
+	private string GetIrcLogfilename()
+    {
+		DateTime n = DateTime.Now;
+		string filename = System.IO.Path.Combine(Environment.CurrentDirectory, $"{n.Year}{n.Month:00}{n.Day:00}_{n.Hour:00}{n.Minute:00}{n.Second:00}_IrcLog.txt");
+		if (System.IO.File.Exists(filename) == false)
+			return filename;
+		for(int i = 0; i < 100; i++)
+        {
+			n = DateTime.Now;
+			filename = System.IO.Path.Combine(Environment.CurrentDirectory, $"{n.Year}{n.Month:00}{n.Day:00}_{n.Hour:00}{n.Minute:00}{n.Second:00}_IrcLog{i}.txt");
+			if (System.IO.File.Exists(filename) == false)
+				return filename;
+		}
+		throw new Exception("Exhausted potential files.  Reached max limit of 99 files in one second");
+	}
+
 }
