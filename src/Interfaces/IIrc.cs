@@ -3,7 +3,7 @@ using System;
 public interface IIrc : IDisposable
 {
 	void Connect(string server, string nick);
-	void Disconnect();
+	void Disconnect(string quitmessage);
 	void Join(string channel);
 
 	event EventHandler<MessageArgs> ChannelMessageReceived;

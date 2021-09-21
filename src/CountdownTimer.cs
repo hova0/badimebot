@@ -194,6 +194,14 @@ namespace badimebot
             //OnMessageEvent($"{item.Title} in {alerttime}");
         }
 
+        public void PrintAlert()
+        {
+            if (_state == CountdownState.Idle)
+                return;
+            PrintAlert(CurrentItem, DateTime.Now - CurrentItem.Epoch, _state);
+            //OnMessageEvent($"{CurrentItem.Title} elapsed time is {DateTime.Now - CurrentItem.Epoch}");
+        }
+
         /// <summary>
         /// Immediately halt the countdown
         /// </summary>

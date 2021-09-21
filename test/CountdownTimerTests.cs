@@ -12,20 +12,12 @@ namespace badimebottests
     [TestClass]
     public class CountdownTimerTests
     {
-        [TestMethod]
-        public void Test_SmallCountdown()
-        {
-            CountdownTimer ct = new CountdownTimer();
-            ct.Enqueue("Test Anime", TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(25));
-            ct.MessageEvent += (x, y) =>
-            {
-                Logger.LogMessage(y.CountdownMessage);
-            };
-            ct.Start();
-            System.Threading.Thread.Sleep(15000);
-            ct.Stop();
+        //[TestMethod]
+        //public void Test_SmallCountdown()
+        //{
+          
             
-        }
+        //}
 
     }
 }
