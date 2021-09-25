@@ -14,11 +14,14 @@ namespace badimebot
             Console.WriteLine("Badime Bot v2.00");
             string server = "127.0.0.1";
             string channel = "#badimebottest";
+            string AuthorizedNick = "hova";
             if (args.Length == 2)
             {
                 server = args[0];
                 channel = args[1];
             }
+            if (args.Length >= 3)
+                AuthorizedNick = args[2];
 
             si = new BasicIrc();
             si.Connect(server, "badimebot");
@@ -36,8 +39,6 @@ namespace badimebot
                 //Only respond to the !badime trigger
                 if (IsValidBotCommand(y.Message, "badime"))
                     si.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
-                //if (y.Message.ToLower().StartsWith("@badime"))
-                //	si.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
 
             };
             si.PrivateMessageReceived += (x, y) =>
@@ -77,7 +78,7 @@ namespace badimebot
 
         public static bool IsValidBotCommand(string fullmessage, string expectedcommand)
         {
-            if (string.IsNullOrEmpty(fullmessage))
+            if (string.IsNullOrEmpty(fullmessage) || fullmessage.Length <= 1)
                 return false;
             if ((fullmessage[0] == '!' || fullmessage[0] == '@') == false)
                 return false;
@@ -134,33 +135,34 @@ namespace badimebot
             Console.WriteLine("badimebot <irc server>  <irc channel>");
         }
 
-        //public static void OnAlert(object sender, CountDownMessageEventArgs ce)
-        //{
-        //    Console.WriteLine("[IRC] " + ce.CountdownMessage);
-        //    si.SendMessage(ce.CountdownMessage);
-        //}
+        ////public static void OnAlert(object sender, CountDownMessageEventArgs ce)
+        ////{
+        ////    Console.WriteLine("[IRC] " + ce.CountdownMessage);
+        ////    si.SendMessage(ce.CountdownMessage);
+        ////}
 
-        /// <summary>
-        /// Event Fired when countdown has reached 0
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        //public static void OnFinished(object sender, EventArgs e)
-        //{
-        //    // Sleep after the timer is done for 20 minutes (average length of an anime)
-        //    // System.Threading.Thread.Sleep((int)new TimeSpan(0, 20, 0).TotalMilliseconds);
-        //    // si.Quit();
-        //    // Environment.Exit(0);
-        //}
-        /// <summary>
-        /// Event fired when IRC has connected successfully
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        //public static void Connected(object sender, EventArgs e)
-        //{
-        //    Console.WriteLine("[IRC] Connected Event Fired");
-        //}
+        ///// <summary>
+        ///// Event Fired when countdown has reached 0
+        ///// </summary>
+        ///// <param name="sender"></param>
+        ///// <param name="e"></param>
+        ////public static void OnFinished(object sender, EventArgs e)
+        ////{
+        ////    // Sleep after the timer is done for 20 minutes (average length of an anime)
+        ////    // System.Threading.Thread.Sleep((int)new TimeSpan(0, 20, 0).TotalMilliseconds);
+        ////    // si.Quit();
+        ////    // Environment.Exit(0);
+        ////}
+        ///// <summary>
+        ///// Event fired when IRC has connected successfully
+        ///// </summary>
+        ///// <param name="sender"></param>
+        ///// <param name="e"></param>
+        ////public static void Connected(object sender, EventArgs e)
+        ////{
+        ////    Console.WriteLine("[IRC] Connected Event Fired");
+        ////}
+
 
         private static void PrintToConsoleWithColor(string message, System.ConsoleColor color)
         {

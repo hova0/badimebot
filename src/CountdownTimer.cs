@@ -17,7 +17,7 @@ namespace badimebot
             PostCountdown
         }
         public Queue<CountdownItem> CountdownList { get; set; } = new Queue<CountdownItem>();
-        public CountdownItem CurrentItem { get; set; }
+        public CountdownItem CurrentItem { get; set; } = CountdownItem.Empty;
         CountdownState _state = CountdownState.Idle;
 
 
@@ -42,7 +42,8 @@ namespace badimebot
             new TimeSpan(0,0,4),
             new TimeSpan(0,0,3),
             new TimeSpan(0,0,2),
-            new TimeSpan(0,0,1)
+            new TimeSpan(0,0,1),
+            new TimeSpan(0,0,0)
         };
 
         public CountdownTimer() {
@@ -108,6 +109,7 @@ namespace badimebot
                 switch (_state)
                 {
                     case CountdownState.Idle:
+                        // Idle loop (waiting for items)
                         while (ct.IsCancellationRequested == false)
                         {
                             lock (_lockobject)
@@ -129,9 +131,8 @@ namespace badimebot
                         }
                         _nextItem.Epoch = DateTime.Now.Add(_nextItem.PreCountdown);
                         CurrentItem = _nextItem;
-                        //if ((CurrentItem.Epoch - DateTime.Now).TotalSeconds < 5)
-                        //    throw new Exception($"Epoch calculation wrong. Epoch = {CurrentItem.Epoch} Now = {DateTime.Now}  PreCountdown = {CurrentItem.PreCountdown} ");
 
+                        // This moves our alert index forward to where we initially should be
                         int _alertIndex = 0;
                         for (int i = 0; i < Alerts.Length; i++)
                             if (Alerts[i] <= CurrentItem.PreCountdown)
@@ -139,13 +140,13 @@ namespace badimebot
                                 _alertIndex = i;
                                 break;
                             }
-
+                        // Main pre-countdown loop. 
                         while (ct.IsCancellationRequested == false)
                         {
                             if ((CurrentItem.Epoch - DateTime.Now) < Alerts[_alertIndex])
                             {
                                 // alart
-                                Console.WriteLine($"{(CurrentItem.Epoch - DateTime.Now).TotalSeconds} < {Alerts[_alertIndex]}");
+                                //Console.WriteLine($"{(CurrentItem.Epoch - DateTime.Now).TotalSeconds} < {Alerts[_alertIndex]}");
                                 PrintAlert(CurrentItem, Alerts[_alertIndex]);
                                 if (_alertIndex == Alerts.Length - 1)
                                 {   // Ran out of alerts, less than one second left
@@ -166,6 +167,7 @@ namespace badimebot
                                 {
                                     // no more things to countdown
                                     _state = CountdownState.Idle;
+                                    CurrentItem = CountdownItem.Empty;
                                     OnMessageEvent("THE END N SHIT");
                                 }
                                 else
@@ -185,10 +187,20 @@ namespace badimebot
 
         private void PrintAlert(CountdownItem item, TimeSpan alerttime, CountdownState state = CountdownState.PreCountdown)
         {
+            if (item == CountdownItem.Empty)
+                OnMessageEvent($"No badimes queued.  Currently Idle.");
             if (state == CountdownState.PostCountdown)
                 OnMessageEvent($"{item.Title} elapsed time is {DateTime.Now - item.Epoch}");
             else if (state == CountdownState.PreCountdown)
-                OnMessageEvent($"{item.Title} in {alerttime}");
+            {
+                if(alerttime >= TimeSpan.FromSeconds(10))
+                    OnMessageEvent($"{item.Title} in {alerttime}");
+                else if(alerttime == TimeSpan.FromSeconds(0))
+                    OnMessageEvent($"{item.Title} starting!");
+                else
+                    OnMessageEvent($"{alerttime.TotalSeconds}");
+
+            }
             else
                 OnMessageEvent($"{item.Title} starting!");
             //OnMessageEvent($"{item.Title} in {alerttime}");
@@ -199,7 +211,6 @@ namespace badimebot
             if (_state == CountdownState.Idle)
                 return;
             PrintAlert(CurrentItem, DateTime.Now - CurrentItem.Epoch, _state);
-            //OnMessageEvent($"{CurrentItem.Title} elapsed time is {DateTime.Now - CurrentItem.Epoch}");
         }
 
         /// <summary>

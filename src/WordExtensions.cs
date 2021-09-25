@@ -28,19 +28,6 @@ namespace badimebot
         {
             foreach (var s in GetWordsWithIndex(fullstring))
                 yield return s.word;
-
-            //int index = 0;
-            //while (true)
-            //{
-            //	if (fullstring.IndexOf(' ', index) == -1)
-            //	{
-            //		yield return fullstring.Substring(index);
-            //		yield break;
-            //	}
-            //	string ret = fullstring.Substring(index, fullstring.IndexOf(' ', index) - index);
-            //	index += ret.Length + 1;
-            //	yield return ret;
-            //}
         }
 
         public static IEnumerable<(string word, int index)> GetWordsWithIndexQuoteable(this string fullstring)

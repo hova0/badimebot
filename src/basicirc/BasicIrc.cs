@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Net.Security;
 using System.Collections.Generic;
 using System.Threading;
+using badimebot;
 
 public class BasicIrc : IIrc, IDisposable
 {
@@ -18,35 +19,40 @@ public class BasicIrc : IIrc, IDisposable
     private string _currentChannel;
     public string Nick { get; set; }
     private CancellationToken _ct = CancellationToken.None;
-    private CancellationTokenSource _cts = new CancellationTokenSource();
+    private CancellationTokenSource _cts;
     public volatile bool _LookingforServerResponse = false;
     public volatile int _LookingforServerResponseCode = 0;
     public System.Threading.ManualResetEventSlim _LookingforServerResponseEvent = new ManualResetEventSlim();
-
+    private string _server = "";
     private volatile bool _server_message_connected = false;
 
     private System.IO.StreamWriter irclog;
 
     public void Connect(string server, string nick)
     {
+        _cts = new CancellationTokenSource();
         string irclogfilename = GetIrcLogfilename();
         irclog = new System.IO.StreamWriter(irclogfilename);
         irclog.AutoFlush = true;
         Console.WriteLine($"Logging to {irclogfilename}");
-
+        Console.WriteLine($"Connecting to {server} with nick {nick}");
+        _server = server;
         _ct = _cts.Token;
         try
         {
 #if DEBUG
-            Console.WriteLine("Bypassing SSL");
-            System.Net.ServicePointManager.ServerCertificateValidationCallback = (a, b, c, d) =>
-            {
-                return true;
-            };
+            //Console.WriteLine("Bypassing SSL");
+            //System.Net.ServicePointManager.ServerCertificateValidationCallback = LogandIgnoreSSLCert;
+            //    = (a, b, c, d) =>
+            //{
+            //    System.IO.File.WriteAllBytes($"{server}.cer", b.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Cert));
+            //    Console.WriteLine($"Wrote certificate to {server}.cer");
+            //    return true;
+            //};
 #endif
 
             TcpClient t = new TcpClient(server, 6697);
-            SslStream s = new SslStream(t.GetStream());
+            SslStream s = new SslStream(t.GetStream(), false, LogandIgnoreSSLCert);
             s.AuthenticateAsClient(server);
             _incomingStream = new System.IO.StreamReader(s);
             _outgoingStream = new System.IO.StreamWriter(s);
@@ -73,7 +79,14 @@ public class BasicIrc : IIrc, IDisposable
         while (_server_message_connected == false)
             System.Threading.Thread.Sleep(50);
     }
-
+    private bool LogandIgnoreSSLCert(object o, System.Security.Cryptography.X509Certificates.X509Certificate? cert,
+        System.Security.Cryptography.X509Certificates.X509Chain? chain,
+        SslPolicyErrors sslpolicy)
+    {
+        System.IO.File.WriteAllBytes($"{_server}.cer", cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Cert));
+        Console.WriteLine($"Wrote certificate to {_server}.cer");
+        return true;
+    }
     private void SetNick(string nick)
     {
         WriteToServerStream($"USER {nick} {nick} {nick} :{nick}");
@@ -92,7 +105,16 @@ public class BasicIrc : IIrc, IDisposable
         {
             if (_ct.IsCancellationRequested)
                 break;
-            string _incoming = _incomingStream.ReadLine();
+            string _incoming = null;
+            try
+            {
+                _incoming = _incomingStream.ReadLine();
+            }catch(Exception e)
+            {
+                badimebot.Program.ConsoleError("Error Reading from server", e);
+                System.Threading.Thread.Sleep(50);
+                break;
+            }
             if (_incoming == null)
             {
                 break;  // end?
@@ -113,18 +135,22 @@ public class BasicIrc : IIrc, IDisposable
                     _LookingforServerResponse = false;
                     _LookingforServerResponseEvent.Set();
                 }
-            }
+            } else 
             if (_incoming.Contains("PRIVMSG") && msg.TryParse(_incoming))
             {
                 if (msg.Channel == null)
                     this.PrivateMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message });
                 else
                     this.ChannelMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message, Channel = msg.Channel });
+            } else
+            {
+                // ??
             }
 
-            //System.Threading.Thread.Sleep(20);
+             //System.Threading.Thread.Sleep(20);
             System.Threading.Thread.Yield();
         }
+
         Console.WriteLine("Message pump finished");
     }
 
@@ -162,7 +188,12 @@ public class BasicIrc : IIrc, IDisposable
         if (quitmessage == null)
             quitmessage = "";
         quitmessage = "QUIT :" + quitmessage;
-        WriteToServerStream(quitmessage);
+        try
+        {
+            WriteToServerStream(quitmessage);
+        } catch (Exception e) {
+            Program.ConsoleError("Could not QUIT server", e);
+        }
         _ircTcpClient.Close();
         _ircTcpClient = null;
     }
