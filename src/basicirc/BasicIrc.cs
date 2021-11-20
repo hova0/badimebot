@@ -4,7 +4,12 @@ using System.Net.Security;
 using System.Collections.Generic;
 using System.Threading;
 using badimebot;
-
+/// <summary>
+/// Simple class for one server, one channel IRC stuff.
+/// Only supports one server.
+/// Only supports one channel.
+/// Can send messages to the channel and users.
+/// </summary>
 public class BasicIrc : IIrc, IDisposable
 {
     public event EventHandler<MessageArgs> ChannelMessageReceived;
@@ -25,11 +30,23 @@ public class BasicIrc : IIrc, IDisposable
     public System.Threading.ManualResetEventSlim _LookingforServerResponseEvent = new ManualResetEventSlim();
     private string _server = "";
     private volatile bool _server_message_connected = false;
-
+    private ConnectionState _state = ConnectionState.Disconnected;
+    private object _lockobject = new object();
     private System.IO.StreamWriter irclog;
-
+    /// <summary>
+    /// Connects to an IRC server.  Will attempt SSL and fallback to unencrypted
+    /// </summary>
+    /// <param name="server"></param>
+    /// <param name="nick"></param>
     public void Connect(string server, string nick)
     {
+        lock (_lockobject)
+        {
+            if (_state != ConnectionState.Disconnected)
+                return;
+            _state = ConnectionState.Connecting;
+        }
+
         _cts = new CancellationTokenSource();
         string irclogfilename = GetIrcLogfilename();
         irclog = new System.IO.StreamWriter(irclogfilename);
@@ -61,7 +78,7 @@ public class BasicIrc : IIrc, IDisposable
         }
         catch (Exception e)
         {
-            Console.WriteLine(e.Message);
+            Program.ConsoleError($"Could not connect to {server}", e);
             Console.WriteLine("Failed to connect via SSL, falling back to plaintext");
             TcpClient t = new TcpClient(server, 6667);
 
@@ -71,6 +88,8 @@ public class BasicIrc : IIrc, IDisposable
             irclog.WriteLine($"Failed to connec via SSL: {e.Message}.");
             irclog.WriteLine($"Connected to {server}:6667");
         }
+
+
         _outgoingStream.AutoFlush = true;
         _MessagePumpThread = new System.Threading.Thread(_MessagePump);
         _MessagePumpThread.Start();
@@ -78,6 +97,10 @@ public class BasicIrc : IIrc, IDisposable
         SetNick(Nick);
         while (_server_message_connected == false)
             System.Threading.Thread.Sleep(50);
+        lock (_lockobject)
+        {
+            _state = ConnectionState.Connected;
+        }
     }
     private bool LogandIgnoreSSLCert(object o, System.Security.Cryptography.X509Certificates.X509Certificate? cert,
         System.Security.Cryptography.X509Certificates.X509Chain? chain,
@@ -109,17 +132,29 @@ public class BasicIrc : IIrc, IDisposable
             try
             {
                 _incoming = _incomingStream.ReadLine();
-            }catch(Exception e)
+            }
+            catch (Exception e)
             {
                 badimebot.Program.ConsoleError("Error Reading from server", e);
                 System.Threading.Thread.Sleep(50);
-                break;
+                if (_ircTcpClient.Connected == false)
+                {
+                    lock (_lockobject)
+                    {
+                        _state = ConnectionState.Disconnected;
+                    }
+                    Reconnect();
+                }
+                else
+                {
+                    break;  // Connected but got a weird error, bail out
+                }
             }
             if (_incoming == null)
             {
+                badimebot.Program.ConsoleError("Read blank line from irc server");
                 break;  // end?
             }
-            //Console.WriteLine("RAW " + _incoming);
             irclog.WriteLine(_incoming);
             if (_incoming.StartsWith("PING"))
                 WriteToServerStream($"PONG {_incoming.Substring(5)}");
@@ -135,19 +170,22 @@ public class BasicIrc : IIrc, IDisposable
                     _LookingforServerResponse = false;
                     _LookingforServerResponseEvent.Set();
                 }
-            } else 
+            }
+            else
             if (_incoming.Contains("PRIVMSG") && msg.TryParse(_incoming))
             {
                 if (msg.Channel == null)
                     this.PrivateMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message });
                 else
                     this.ChannelMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message, Channel = msg.Channel });
-            } else
+            }
+            else
             {
                 // ??
+                badimebot.Program.ConsoleError($"Unknown server message: {_incoming}");
             }
 
-             //System.Threading.Thread.Sleep(20);
+            //System.Threading.Thread.Sleep(20);
             System.Threading.Thread.Yield();
         }
 
@@ -156,11 +194,18 @@ public class BasicIrc : IIrc, IDisposable
 
     private void WriteToServerStream(string msg)
     {
-        if(_outgoingStream != null && _ircTcpClient.Connected)
+        if (_outgoingStream != null && _ircTcpClient.Connected)
         {
             irclog?.WriteLine(msg);
             _outgoingStream.WriteLine(msg);
         }
+    }
+    private void Reconnect()
+    {
+        if (_state != ConnectionState.Disconnected)
+            return;
+        Connect(_server, Nick);
+        Join(_currentChannel);
     }
 
     private void WaitforServer()
@@ -172,13 +217,10 @@ public class BasicIrc : IIrc, IDisposable
             System.Threading.Thread.Sleep(50);
         }
     }
-    /*
-
-   RAW :hova!hova@Clk-E1EA8378 PRIVMSG #raspberryheaven :hello
-   RAW :hova!hova@Clk-E1EA8378 PRIVMSG badimebot :hello
-
-    */
-
+    /// <summary>
+    /// Disconnects from the IRC server
+    /// </summary>
+    /// <param name="quitmessage"></param>
     public void Disconnect(string quitmessage = "")
     {
         if (_disposed)
@@ -191,13 +233,19 @@ public class BasicIrc : IIrc, IDisposable
         try
         {
             WriteToServerStream(quitmessage);
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             Program.ConsoleError("Could not QUIT server", e);
         }
         _ircTcpClient.Close();
+        _state = ConnectionState.Disconnected;
         _ircTcpClient = null;
     }
     private bool _disposed = false;
+    /// <summary>
+    /// Cleans up resources
+    /// </summary>
     public void Dispose()
     {
         if (!_disposed)
@@ -213,9 +261,22 @@ public class BasicIrc : IIrc, IDisposable
             _disposed = true;
         }
     }
-
+    /// <summary>
+    /// Joins an IRC channel.   Only one channel is supported at a time.
+    /// </summary>
+    /// <param name="channel"></param>
     public void Join(string channel)
     {
+        // Leave current channel
+        lock (_lockobject)
+        {
+            if (!String.IsNullOrEmpty(_currentChannel) && _state == ConnectionState.ChannelJoined)
+            {
+                WriteToServerStream($"PART {_currentChannel}");
+                _state = ConnectionState.Connected;
+            }
+        }
+
         _LookingforServerResponseEvent.Reset();
         if (!channel.StartsWith("#"))
             channel = "#" + channel;
@@ -223,23 +284,44 @@ public class BasicIrc : IIrc, IDisposable
         _LookingforServerResponse = true;
         _LookingforServerResponseCode = 366;
         _LookingforServerResponseEvent.Wait();
-        //WaitforServer();
+
+        // Successfully joined
         _currentChannel = channel;
+        lock (_lockobject)
+        {
+            _state = ConnectionState.ChannelJoined;
+        }
     }
 
 
 
-
+    /// <summary>
+    /// Sends a private message to an IRC user
+    /// </summary>
+    /// <param name="nick"></param>
+    /// <param name="message"></param>
     public void PrivateMessage(string nick, string message)
     {
         WriteToServerStream($"PRIVMSG {nick} :{message}");
     }
-
+    /// <summary>
+    /// Sends a message to the current channel
+    /// </summary>
+    /// <param name="message"></param>
     public void SendMessage(string message)
     {
+        lock (_lockobject)
+        {
+            if (_state != ConnectionState.ChannelJoined)
+                return;
         WriteToServerStream($"PRIVMSG {this._currentChannel} :{message}");
+        }
     }
 
+    /// <summary>
+    /// Gets a filename to log irc raw to
+    /// </summary>
+    /// <returns></returns>
     private string GetIrcLogfilename()
     {
         DateTime n = DateTime.Now;
@@ -257,4 +339,12 @@ public class BasicIrc : IIrc, IDisposable
         throw new Exception("Exhausted potential files.  Reached max limit of 99 files");
     }
 
+}
+
+public enum ConnectionState
+{
+    Disconnected,
+    Connecting,
+    Connected,
+    ChannelJoined
 }
