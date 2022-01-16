@@ -83,6 +83,8 @@ namespace badimebot
         /// <returns>See summary</returns>
         public TimeSpan GetElapsedTime()
         {
+            if (_state == CountdownState.Idle)
+                return TimeSpan.Zero;
             return DateTime.Now.Subtract(CurrentItem.Epoch);
         }
 

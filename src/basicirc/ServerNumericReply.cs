@@ -15,7 +15,8 @@ public class ServerNumericReply : IServerMessage
 	public int ReplyCode { get; internal set; }
 	public string To { get; internal set; }
 	public string Msg { get; internal set; }
-	public string Nick { get; set; }
+	private string _nick;
+	public string Nick { get { return _nick; } set { _nick = value.ToLowerInvariant(); } }
 
 	public ServerNumericReply()
 	{
@@ -46,7 +47,7 @@ public class ServerNumericReply : IServerMessage
 			return false;
 		ReplyCode = x;
 
-		if (sections[2] != Nick)    // Validate it is our nick
+		if (string.IsNullOrEmpty(sections[2]) || sections[2].ToLowerInvariant() != Nick)    // Validate it is our nick
 			return false;
 
 		if (string.IsNullOrEmpty(_server_identifier))   // Stash server identifier
@@ -62,7 +63,10 @@ public class ServerNumericReply : IServerMessage
 }
 
 public class ChatMessage : IServerMessage {
-	public string Nick {get;set;}
+	private string _nick;
+	// Nick comparisons must be case-insensitive...  Some irc clients like to capitalize the first letter for ... reasons?
+	public string Nick { get { return _nick; } set { _nick = value.ToLowerInvariant(); } }
+
 	public string From {get;set;}
 	public string Channel {get;set;}
 	public string Message {get;set;}
@@ -99,7 +103,7 @@ public class ChatMessage : IServerMessage {
 		string rawto = words.Current.word;
 		if(rawto.StartsWith('#')) 
 			this.Channel = rawto;
-		 else if(rawto != this.Nick) 
+		 else if(rawto.ToLowerInvariant() != this.Nick) 
 			return false;
 		else 
 			this.Channel = null;
