@@ -156,9 +156,11 @@ public class BasicIrc : IIrc, IDisposable
                 break;  // end?
             }
             irclog.WriteLine(_incoming);
+
+            // Parse and fire events
             if (_incoming.StartsWith("PING"))
                 WriteToServerStream($"PONG {_incoming.Substring(5)}");
-
+            else
             if (snr.TryParse(_incoming))
             {
                 if (snr.ReplyCode == 266)
