@@ -4,6 +4,8 @@ using System.Net.Security;
 using System.Collections.Generic;
 using System.Threading;
 using badimebot;
+using Microsoft.VisualBasic;
+using System.Runtime.CompilerServices;
 /// <summary>
 /// Simple class for one server, one channel IRC stuff.
 /// Only supports one server.
@@ -12,15 +14,19 @@ using badimebot;
 /// </summary>
 public class BasicIrc : IIrc, IDisposable
 {
+    // Events
     public event EventHandler<MessageArgs> ChannelMessageReceived;
     public event EventHandler<MessageArgs> PrivateMessageReceived;
+    public event EventHandler Disconnected;
+    public event EventHandler Connected;
+    public event EventHandler<string> ChannelJoined;
+
     public bool IsSSLSecured { get; internal set; }
     System.Threading.Thread _MessagePumpThread;
-    //System.Net.Sockets.NetworkStream ircNetworkStream;
     System.IO.StreamReader _incomingStream;
     System.IO.StreamWriter _outgoingStream;
     private TcpClient _ircTcpClient;
-    public bool Connected { get; internal set; }
+    public bool IsConnected { get; internal set; }
     private string _currentChannel;
     public string Nick { get; set; }
     private CancellationToken _ct = CancellationToken.None;
@@ -29,10 +35,21 @@ public class BasicIrc : IIrc, IDisposable
     public volatile int _LookingforServerResponseCode = 0;
     public System.Threading.ManualResetEventSlim _LookingforServerResponseEvent = new ManualResetEventSlim();
     private string _server = "";
-    private volatile bool _server_message_connected = false;
+    private ManualResetEvent _server_Connected = new ManualResetEvent(false);
     private ConnectionState _state = ConnectionState.Disconnected;
+    // Lock reference used for accessing _state variable.  For state changes always lock!
     private object _lockobject = new object();
+    // Log to file irc traffic (in raw form mostly)
     private System.IO.StreamWriter irclog;
+    
+    // These may be specific based on irc server?
+    private const int SERVER_MOTD_FINISHED = 376;
+    private const int SERVER_JOIN_FINISHED = 366;
+    private const int SERVER_JOIN_NAMES_LIST = 353;
+    private const int SERVER_JOIN_TOPIC = 332;
+
+    private string _currentserver;
+    private string _currentnick;
     /// <summary>
     /// Connects to an IRC server.  Will attempt SSL and fallback to unencrypted
     /// </summary>
@@ -40,13 +57,15 @@ public class BasicIrc : IIrc, IDisposable
     /// <param name="nick"></param>
     public void Connect(string server, string nick)
     {
+        _server_Connected.Reset();
         lock (_lockobject)
         {
             if (_state != ConnectionState.Disconnected)
                 return;
             _state = ConnectionState.Connecting;
         }
-
+        _currentserver = server;
+        _currentnick = nick;
         _cts = new CancellationTokenSource();
         string irclogfilename = GetIrcLogfilename();
         irclog = new System.IO.StreamWriter(irclogfilename);
@@ -57,17 +76,6 @@ public class BasicIrc : IIrc, IDisposable
         _ct = _cts.Token;
         try
         {
-#if DEBUG
-            //Console.WriteLine("Bypassing SSL");
-            //System.Net.ServicePointManager.ServerCertificateValidationCallback = LogandIgnoreSSLCert;
-            //    = (a, b, c, d) =>
-            //{
-            //    System.IO.File.WriteAllBytes($"{server}.cer", b.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Cert));
-            //    Console.WriteLine($"Wrote certificate to {server}.cer");
-            //    return true;
-            //};
-#endif
-
             TcpClient t = new TcpClient(server, 6697);
             SslStream s = new SslStream(t.GetStream(), false, LogandIgnoreSSLCert);
             s.AuthenticateAsClient(server);
@@ -94,13 +102,13 @@ public class BasicIrc : IIrc, IDisposable
         _MessagePumpThread = new System.Threading.Thread(_MessagePump);
         _MessagePumpThread.Start();
         Nick = nick;
+        _server_Connected.WaitOne(5000);
         SetNick(Nick);
-        while (_server_message_connected == false)
-            System.Threading.Thread.Sleep(50);
         lock (_lockobject)
         {
             _state = ConnectionState.Connected;
         }
+        Connected?.Invoke(this, EventArgs.Empty);
     }
     private bool LogandIgnoreSSLCert(object o, System.Security.Cryptography.X509Certificates.X509Certificate? cert,
         System.Security.Cryptography.X509Certificates.X509Chain? chain,
@@ -112,8 +120,10 @@ public class BasicIrc : IIrc, IDisposable
     }
     private void SetNick(string nick)
     {
-        WriteToServerStream($"USER {nick} {nick} {nick} :{nick}");
-        WriteToServerStream($"NICK {nick}");
+        //NOTE:   When testing on an unrealircd server, we don't get the line 
+        WriteToServerStreamDangerous($"USER {nick} {nick} {nick} :{nick}");
+        //WriteToServerStreamDangerous($"AUTH {nick}:{nick.GetHashCode()}");
+        WriteToServerStreamDangerous($"NICK {nick}");
 
     }
 
@@ -135,20 +145,7 @@ public class BasicIrc : IIrc, IDisposable
             }
             catch (Exception e)
             {
-                badimebot.Program.ConsoleError("Error Reading from server", e);
-                System.Threading.Thread.Sleep(50);
-                if (_ircTcpClient.Connected == false)
-                {
-                    lock (_lockobject)
-                    {
-                        _state = ConnectionState.Disconnected;
-                    }
-                    Reconnect();
-                }
-                else
-                {
-                    break;  // Connected but got a weird error, bail out
-                }
+                HandleNetworkFault(e);
             }
             if (_incoming == null)
             {
@@ -163,9 +160,9 @@ public class BasicIrc : IIrc, IDisposable
             else
             if (snr.TryParse(_incoming))
             {
-                if (snr.ReplyCode == 266)
+                if (snr.ReplyCode == SERVER_MOTD_FINISHED)
                 {
-                    _server_message_connected = true;   // Set volatile flag that indicates connection complete and join established
+                    _server_Connected.Set();    // Set flag to allow connection to continue
                 }
                 if (_LookingforServerResponse && snr.ReplyCode == _LookingforServerResponseCode)
                 {
@@ -196,29 +193,41 @@ public class BasicIrc : IIrc, IDisposable
 
     private void WriteToServerStream(string msg)
     {
+        if (_state == ConnectionState.Disconnected)
+            return;
         if (_outgoingStream != null && _ircTcpClient.Connected)
         {
             irclog?.WriteLine(msg);
+            try
+            {
+                lock (_outgoingStream)
+                {
+                    _outgoingStream.WriteLine(msg);
+                }
+            }catch(Exception e)
+            {
+                HandleNetworkFault(e);
+            }
+        }
+    }
+    private void WriteToServerStreamDangerous(string msg)
+    {
+        irclog?.WriteLine(msg);
+        lock (_outgoingStream)
+        {
             _outgoingStream.WriteLine(msg);
         }
     }
+
     private void Reconnect()
     {
         if (_state != ConnectionState.Disconnected)
             return;
         Connect(_server, Nick);
-        Join(_currentChannel);
+        if (!string.IsNullOrEmpty(_currentChannel)) 
+            Join(_currentChannel);
     }
 
-    private void WaitforServer()
-    {
-        while (true)
-        {
-            if (_LookingforServerResponse == false)
-                break;
-            System.Threading.Thread.Sleep(50);
-        }
-    }
     /// <summary>
     /// Disconnects from the IRC server
     /// </summary>
@@ -252,7 +261,7 @@ public class BasicIrc : IIrc, IDisposable
     {
         if (!_disposed)
         {
-            if (Connected)
+            if (IsConnected)
                 Disconnect();
 
             irclog.Close();
@@ -264,7 +273,7 @@ public class BasicIrc : IIrc, IDisposable
         }
     }
     /// <summary>
-    /// Joins an IRC channel.   Only one channel is supported at a time.
+    /// Joins an IRC channel.   Only one channel is supported at a time. 
     /// </summary>
     /// <param name="channel"></param>
     public void Join(string channel)
@@ -282,9 +291,9 @@ public class BasicIrc : IIrc, IDisposable
         _LookingforServerResponseEvent.Reset();
         if (!channel.StartsWith("#"))
             channel = "#" + channel;
-        WriteToServerStream($"JOIN {channel}");
         _LookingforServerResponse = true;
-        _LookingforServerResponseCode = 366;
+        _LookingforServerResponseCode = SERVER_JOIN_FINISHED;
+        WriteToServerStream($"JOIN {channel}");
         _LookingforServerResponseEvent.Wait();
 
         // Successfully joined
@@ -293,6 +302,7 @@ public class BasicIrc : IIrc, IDisposable
         {
             _state = ConnectionState.ChannelJoined;
         }
+        ChannelJoined?.Invoke(this, channel);
     }
 
 
@@ -341,12 +351,45 @@ public class BasicIrc : IIrc, IDisposable
         throw new Exception("Exhausted potential files.  Reached max limit of 99 files");
     }
 
+
+    private void HandleNetworkFault(Exception e)
+    {
+        badimebot.Program.ConsoleError("Error Reading from server", e);
+        System.Threading.Thread.Sleep(50);
+        if (_ircTcpClient.Connected == false)
+        {
+            lock (_lockobject)
+            {
+                _state = ConnectionState.Disconnected;
+            }
+            Disconnected?.Invoke(this, EventArgs.Empty);
+            Reconnect();
+        }
+        else
+        {
+            badimebot.Program.ConsoleError("Still connected on tcp stream", null);
+              // Connected but got a weird error, bail out
+        }
+    }
+
 }
 
 public enum ConnectionState
 {
+    /// <summary>
+    /// Not connected
+    /// </summary>
     Disconnected,
+    /// <summary>
+    /// In the process of connecting.  Cannot send messages or join channels yet.
+    /// </summary>
     Connecting,
+    /// <summary>
+    /// Connected to irc server but not joined to a channel yet.  Cannot send messages
+    /// </summary>
     Connected,
+    /// <summary>
+    /// Fully connected.   Can send messages.
+    /// </summary>
     ChannelJoined
 }

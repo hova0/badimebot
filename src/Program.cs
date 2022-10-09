@@ -7,8 +7,8 @@ namespace badimebot
     public class Program
     {
 
-        static IIrc si;
-
+        static IIrc irc;
+        static CountdownTimer animetimer = new CountdownTimer();
         static int Main(string[] args)
         {
             Console.WriteLine("Badime Bot v2.00");
@@ -23,57 +23,92 @@ namespace badimebot
             if (args.Length >= 3)
                 AuthorizedNick = args[2];
 
-            si = new BasicIrc();
-            si.Connect(server, "badimebot");
+            irc = new BasicIrc();
+            irc.Connect(server, "badimebot");
             Console.WriteLine("Connected");
-            si.Join(channel);
+            irc.Join(channel);
             Console.WriteLine($"Joined channel {channel}");
-            CountdownTimer animetimer = new CountdownTimer();
             animetimer.MessageEvent += (x, y) =>
             {
-                si.SendMessage(y.CountdownMessage);
+                irc.SendMessage(y.CountdownMessage);
             };
+            irc.Connected += Irc_Connected;
+            irc.ChannelMessageReceived += Si_ChannelMessageReceived;
+            irc.PrivateMessageReceived += Si_PrivateMessageReceived;
+            irc.Disconnected += Si_Disconnected;
 
-            si.ChannelMessageReceived += (x, y) =>
-            {
-                //Only respond to the !badime trigger
-                if (IsValidBotCommand(y.Message, "badime"))
-                    si.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
-
-            };
-            si.PrivateMessageReceived += (x, y) =>
-            {
-
-                if (IsValidBotCommand(y.Message, "badime"))
-                    si.PrivateMessage(y.From, string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
-                if (y.From == "hova")
-                {
-                    if (y.Message == "shutdown")
-                    {
-                        PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
-                        si.Disconnect($"{y.From} told me to quit");
-                        animetimer.Stop();
-                        Environment.Exit(0);
-                    }
-
-                    if (y.Message.StartsWith("add"))
-                    {
-                        CountdownItem ci = CountdownTimer.Parse(y.Message);
-
-                        if (ci != CountdownItem.Empty)
-                        {
-                            animetimer.Enqueue(ci);
-                            si.PrivateMessage(y.From, $"Enqueued {ci.Title} for {ci.Length}");
-                        }
-                    }
-                }
-            };
             animetimer.Start();
             Console.WriteLine("Press Enter to quit...");
             Console.ReadLine();
             animetimer.Stop();
-            si.Disconnect("Someone pressed enter on the console");
+            irc.Disconnect("Someone pressed enter on the console");
             return 0;
+        }
+
+        private static void Irc_Connected(object sender, EventArgs e)
+        {
+            if (animetimer.State == CountdownTimer.CountdownState.Paused)
+                animetimer.Resume();
+        }
+
+        private static void Si_Disconnected(object sender, EventArgs e)
+        {
+            if(animetimer.State == CountdownTimer.CountdownState.PreCountdown)
+            {
+                // Pause countdown if we get disconnected so we don't start the while disconnected
+                // and thus unable to notify irc that it started.
+                animetimer.Pause();
+            } 
+        }
+
+        private static void Si_PrivateMessageReceived(object x, MessageArgs y)
+        {
+            if (IsValidBotCommand(y.Message, "badime"))
+                irc.PrivateMessage(y.From, string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
+            if (y.From == "hova")
+            {
+                string firstword = y.Message.Trim();
+                if(firstword.IndexOf(' ') > 0)
+                    firstword = firstword.Substring(0, firstword.IndexOf(' '));
+                Console.WriteLine($"**DEBUG** '{firstword}'");
+
+                if (firstword == "shutdown")
+                {
+                    PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
+                    irc.Disconnect($"{y.From} told me to quit");
+                    animetimer.Stop();
+                    Environment.Exit(0);
+                }
+
+                if (firstword == "add")
+                {
+                    CountdownItem ci = CountdownTimer.Parse(y.Message.Trim());
+
+                    if (ci != CountdownItem.Empty)
+                    {
+                        animetimer.Enqueue(ci);
+                        irc.PrivateMessage(y.From, $"Enqueued {ci.Title} for {ci.Length}");
+                    }
+                }
+                if(firstword == "pause" && animetimer.State == CountdownTimer.CountdownState.PreCountdown)
+                {
+                    animetimer.Pause();
+                    irc.PrivateMessage(y.From, $"Paused countdown at " + animetimer.GetElapsedTime());
+                }
+                if (firstword == "resume" && animetimer.State == CountdownTimer.CountdownState.Paused)
+                {
+                    animetimer.Resume();
+                    irc.PrivateMessage(y.From, $"Resumed countdown from " + animetimer.GetElapsedTime());
+                }
+            }
+        }
+
+        private static void Si_ChannelMessageReceived(object x, MessageArgs y)
+        {
+            //Only respond to the !badime trigger
+            if (IsValidBotCommand(y.Message, "badime"))
+                irc.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
+
         }
 
         public static bool IsValidBotCommand(string fullmessage, string expectedcommand)
@@ -87,6 +122,7 @@ namespace badimebot
             return false;
         }
 
+        [Obsolete]
         private static string[] SeperateIRCCommandArguments(string fullmessage)
         {
             // No longer used, because we refactored some stuff into an irc library
@@ -134,35 +170,6 @@ namespace badimebot
         {
             Console.WriteLine("badimebot <irc server>  <irc channel>");
         }
-
-        ////public static void OnAlert(object sender, CountDownMessageEventArgs ce)
-        ////{
-        ////    Console.WriteLine("[IRC] " + ce.CountdownMessage);
-        ////    si.SendMessage(ce.CountdownMessage);
-        ////}
-
-        ///// <summary>
-        ///// Event Fired when countdown has reached 0
-        ///// </summary>
-        ///// <param name="sender"></param>
-        ///// <param name="e"></param>
-        ////public static void OnFinished(object sender, EventArgs e)
-        ////{
-        ////    // Sleep after the timer is done for 20 minutes (average length of an anime)
-        ////    // System.Threading.Thread.Sleep((int)new TimeSpan(0, 20, 0).TotalMilliseconds);
-        ////    // si.Quit();
-        ////    // Environment.Exit(0);
-        ////}
-        ///// <summary>
-        ///// Event fired when IRC has connected successfully
-        ///// </summary>
-        ///// <param name="sender"></param>
-        ///// <param name="e"></param>
-        ////public static void Connected(object sender, EventArgs e)
-        ////{
-        ////    Console.WriteLine("[IRC] Connected Event Fired");
-        ////}
-
 
         private static void PrintToConsoleWithColor(string message, System.ConsoleColor color)
         {

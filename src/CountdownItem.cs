@@ -32,5 +32,14 @@ namespace badimebot
             return this.Title.GetHashCode() ^ this.Length.GetHashCode() ^ this.PreCountdown.GetHashCode();
         }
 
+        public CountdownItem Copy()
+        {
+            CountdownItem i = new CountdownItem();
+            i.Title = this.Title;
+            i.Length = this.Length;
+            i.PreCountdown = this.PreCountdown;
+            i.Epoch = this.Epoch;
+            return i;
+        }
     }
 }

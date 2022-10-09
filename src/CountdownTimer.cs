@@ -14,12 +14,24 @@ namespace badimebot
         {
             Idle,
             PreCountdown,
-            PostCountdown
+            PostCountdown,
+            Paused
         }
-        public Queue<CountdownItem> CountdownList { get; set; } = new Queue<CountdownItem>();
+        // Allowed State transitions
+        //
+        // Idle -> PreCountdown
+        // PreCountdown -> PostCountdown
+        // PostCountdown -> Idle
+        // PreCountdown -> Paused
+        // Paused -> PreCountdown
+
+        private DateTime PausedStart;
+
+        public CountdownQueue<CountdownItem> CountdownList { get; set; } = new CountdownQueue<CountdownItem>();
         public CountdownItem CurrentItem { get; set; } = CountdownItem.Empty;
         CountdownState _state = CountdownState.Idle;
-
+        public CountdownState State
+        { get { return _state; } }
 
         System.Threading.CancellationToken ct;
         System.Threading.CancellationTokenSource cts;
@@ -100,6 +112,47 @@ namespace badimebot
 
         }
 
+        public void Pause()
+        {
+            if (_state != CountdownState.PreCountdown)
+            {
+                Console.WriteLine("Cannot Pause.  Current state must be PreCountdown but was " + _state.ToString());
+                return;
+            }
+            PausedStart = DateTime.Now;
+            _state = CountdownState.Paused;
+
+            CountdownItem x = CurrentItem;
+            x.PreCountdown = CurrentItem.Epoch - DateTime.Now;
+            CountdownList.Insert(0, x);   // Put our current counting down item back in the queue
+        }
+
+        public void Resume()
+        {
+            if (_state != CountdownState.Paused)
+            {
+                Console.WriteLine("Cannot Resume.  Current state must be Paused but was " + _state.ToString());
+                return;
+            }
+            TimeSpan timetoadd = DateTime.Now - PausedStart;
+            Console.WriteLine($"**DEBUG** Adding {timetoadd} to countdowns");
+
+            // Add time to all entries by dequeuing and enqueuing them all back 
+            lock (_lockobject)
+            {
+                
+                for (int i = 0; i < CountdownList.Count; i++)
+                {
+                    // update and replace (because it's a struct, not a class)
+                    CountdownItem x = CountdownList[i];
+                    x.Epoch += timetoadd;
+                    CountdownList[i] = x;
+                }
+            }
+
+            _state = CountdownState.PreCountdown;
+        }
+
         /// <summary>
         /// Main countdown thread.
         /// </summary>
@@ -110,6 +163,9 @@ namespace badimebot
             {
                 switch (_state)
                 {
+                    case CountdownState.Paused:
+                        System.Threading.Thread.Sleep(1000);
+                        break;
                     case CountdownState.Idle:
                         // Idle loop (waiting for items)
                         while (ct.IsCancellationRequested == false)
@@ -158,6 +214,8 @@ namespace badimebot
                                 _alertIndex++;
                             }
                             System.Threading.Thread.Sleep(100);
+                            if (_state != CountdownState.PreCountdown)
+                                break;
                         }
                         break;
                     case CountdownState.PostCountdown:

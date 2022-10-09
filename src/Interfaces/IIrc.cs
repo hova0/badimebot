@@ -8,6 +8,10 @@ public interface IIrc : IDisposable
 
 	event EventHandler<MessageArgs> ChannelMessageReceived;
 	event EventHandler<MessageArgs> PrivateMessageReceived;
+	event EventHandler Disconnected;
+	event EventHandler Connected;
+	event EventHandler<string> ChannelJoined;
+
 	void SendMessage(string message);
 	void PrivateMessage(string nick, string message);
 
