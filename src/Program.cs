@@ -70,7 +70,6 @@ namespace badimebot
                 string firstword = y.Message.Trim();
                 if(firstword.IndexOf(' ') > 0)
                     firstword = firstword.Substring(0, firstword.IndexOf(' '));
-                Console.WriteLine($"**DEBUG** '{firstword}'");
 
                 if (firstword == "shutdown")
                 {
@@ -99,6 +98,25 @@ namespace badimebot
                 {
                     animetimer.Resume();
                     irc.PrivateMessage(y.From, $"Resumed countdown from " + animetimer.GetElapsedTime());
+                }
+                if(firstword == "remove")
+                {
+                    string title = y.Message.Substring(y.Message.IndexOf(' '));
+                    if (animetimer.Remove(title))
+                        irc.PrivateMessage(y.From, $"'{title}' removed.");
+                    else
+                        irc.PrivateMessage(y.From, $"Could not find '{title}'");
+                }
+                if(firstword == "insert")
+                {
+                    string regex = @"insert (.*?) for (.*?) in (.*?) at (\d+)";
+                    var m = System.Text.RegularExpressions.Regex.Match(y.Message, regex);
+                    if (m.Success)
+                    {
+                        int position = int.Parse(m.Groups[4].Value);
+                        CountdownItem ci = CountdownTimer.Parse(y.Message.Trim());
+                        animetimer.Insert(ci, position);
+                    }
                 }
             }
         }

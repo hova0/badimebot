@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace badimebot
 {
@@ -64,6 +65,8 @@ namespace badimebot
             ct = cts.Token;
         }
 
+        #region List Manipulation
+
         public void Enqueue(string Anime, TimeSpan Countdown, TimeSpan Length)
         {
             CountdownItem item = new CountdownItem();
@@ -78,6 +81,22 @@ namespace badimebot
             CountdownList.Enqueue(item);
         }
 
+        public void Insert(CountdownItem item, int position)
+        {
+            CountdownList.Insert(position, item);
+        }
+
+        public bool Remove(CountdownItem item)
+        {
+            return CountdownList.Remove(item);
+        }
+
+        public bool Remove(string title)
+        {
+            CountdownItem item = CountdownList.FirstOrDefault(x => x.Title == title);
+            return Remove(item);
+        }
+        #endregion
 
         public void OnMessageEvent(string countdownmessage)
         {
@@ -287,7 +306,7 @@ namespace badimebot
         {
             // add Anime Title for 25:00 in 15:00
             // add <title> for <length> in <countdown>
-            System.Text.RegularExpressions.Regex r = new System.Text.RegularExpressions.Regex(@"add\s(.*?)\sfor\s(.*?)\sin\s(.*)");
+            System.Text.RegularExpressions.Regex r = new System.Text.RegularExpressions.Regex(@"(?:(?:add)|(?:insert))\s(.*?)\sfor\s(.*?)\sin\s([^ ]+)");
             if (r.IsMatch(message))
             {
                 var m = r.Match(message);

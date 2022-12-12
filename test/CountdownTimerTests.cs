@@ -59,6 +59,44 @@ namespace badimebottests
             ct.Dispose();
         }
 
+        [TestMethod]
+        public void Test_Insertion_Removal()
+        {
+            CountdownTimer ct = new CountdownTimer();
+            ct.Enqueue("Test1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            ct.Enqueue("Test3", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            ct.Enqueue("Test5", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
+            ct.Insert(new CountdownItem() { Title = "Test2", Length = TimeSpan.FromSeconds(30), PreCountdown = TimeSpan.FromSeconds(30) }, 1);
+            ct.Insert(new CountdownItem() { Title = "Test4", Length = TimeSpan.FromSeconds(30), PreCountdown = TimeSpan.FromSeconds(30) }, 3);
+
+            for(int i = 1; i <= 5; i++)
+            {
+                string title = "Test" + i.ToString();
+                Assert.IsTrue(ct.CountdownList[i-1].Title == title);
+            }
+            Assert.IsTrue(ct.Remove("Test3"));
+            foreach(var item in ct.CountdownList)
+            {
+                Assert.IsFalse(item.Title == "Test3");
+            }
+            Assert.IsFalse(ct.Remove("Test3"));
+        }
+
+        [TestMethod]
+        public void Test_Parsing()
+        {
+            var item = CountdownTimer.Parse("add Pui Pui Molcar for 15:00 in 05:00");
+            Assert.AreNotEqual(item, CountdownItem.Empty);
+            Assert.IsTrue(item.Title == "Pui Pui Molcar");
+            Assert.IsTrue(item.Length == TimeSpan.FromMinutes(15));
+            Assert.IsTrue(item.PreCountdown == TimeSpan.FromMinutes(5));
+
+            item = CountdownTimer.Parse("insert Dragonball Z for 15:00 in 20:00 at 3");
+            Assert.IsTrue(item.Title == "Dragonball Z");
+            Assert.IsTrue(item.Length == TimeSpan.FromMinutes(15));
+            Assert.IsTrue(item.PreCountdown == TimeSpan.FromMinutes(20));
+
+        }
     }
 }
