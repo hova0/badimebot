@@ -58,9 +58,16 @@ namespace badimebot
                 // Pause countdown if we get disconnected so we don't start the while disconnected
                 // and thus unable to notify irc that it started.
                 animetimer.Pause();
+                Console.WriteLine("IRC Disconnected, countdown paused...");
+                
             } 
         }
 
+        /// <summary>
+        /// Handle private messages
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
         private static void Si_PrivateMessageReceived(object x, MessageArgs y)
         {
             if (IsValidBotCommand(y.Message, "badime"))
@@ -123,6 +130,11 @@ namespace badimebot
             }
         }
 
+        /// <summary>
+        /// Handle channel messages
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
         private static void Si_ChannelMessageReceived(object x, MessageArgs y)
         {
             //Only respond to the !badime trigger
@@ -157,50 +169,6 @@ namespace badimebot
             if (fullmessage.Substring(1).ToLower().StartsWith(expectedcommand))
                 return true;
             return false;
-        }
-
-        [Obsolete]
-        private static string[] SeperateIRCCommandArguments(string fullmessage)
-        {
-            // No longer used, because we refactored some stuff into an irc library
-
-            List<string> finalarguments = new List<string>();
-            string[] fullsplit = fullmessage.Split(' ');
-            string intermediatearg = "";
-            for (int i = 0; i < fullsplit.Length; i++)
-            {
-                if (fullsplit[i].StartsWith("\""))
-                {
-                    // Start of quote
-                    intermediatearg += fullsplit[i].Replace("\"", "");
-                    if (fullsplit[i].EndsWith("\""))
-                    {   // Single word fully quoted
-                        finalarguments.Add(intermediatearg);
-                        intermediatearg = "";
-                    }
-                    continue;
-                }
-                if (fullsplit[i].EndsWith("\""))
-                {
-                    // End of quote
-                    intermediatearg += " " + fullsplit[i].Substring(0, fullsplit[i].Length - 1);
-                    finalarguments.Add(intermediatearg);
-                    intermediatearg = "";
-                    continue;
-                }
-                //Middle of quote
-                if (intermediatearg.Length > 0)
-                    intermediatearg += " " + fullsplit[i];
-
-                if (intermediatearg.Length == 0)
-                {
-                    finalarguments.Add(fullsplit[i]);
-                }
-            }
-            if (intermediatearg.Length != 0)
-                finalarguments.Add(intermediatearg);
-
-            return finalarguments.ToArray();
         }
 
         public static void ShowHelp()

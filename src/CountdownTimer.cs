@@ -141,7 +141,9 @@ namespace badimebot
             //OnMessageEvent(string.Format("Counting down to {0} in {1}",Title,  countdowntimer));
             Debug.WriteLine("Countdown thread started");
         }
-
+        /// <summary>
+        /// Pauses the countdown.   Only allowed during Pre-Countdown phase.
+        /// </summary>
         public void Pause()
         {
             if (_state != CountdownState.PreCountdown)
@@ -149,13 +151,11 @@ namespace badimebot
                 Console.WriteLine("Cannot Pause.  Current state must be PreCountdown but was " + _state.ToString());
                 return;
             }
-            //PausedStart = DateTime.Now;
             _state = CountdownState.Paused;
 
             CountdownItem x = CurrentItem;
             x.PreCountdown = CurrentItem.Epoch - DateTime.Now;
             CurrentItem = x;
-            //CountdownList.Insert(0, x);   // Put our current counting down item back in the queue
             Debug.WriteLine("Countdown Paused");
         }
 
@@ -264,6 +264,7 @@ namespace badimebot
                 }
             }
             // end of loop
+            // end of thread
         }
 
         private void PrintAlert(CountdownItem item, TimeSpan alerttime, CountdownState state = CountdownState.PreCountdown)
@@ -308,17 +309,24 @@ namespace badimebot
             // add Anime Title for 25:00 in 15:00
             // add <title> for <length> in <countdown>
             System.Text.RegularExpressions.Regex r = new System.Text.RegularExpressions.Regex(@"(?:(?:add)|(?:insert))\s(.*?)\sfor\s(.*?)\sin\s([^ ]+)");
-            if (r.IsMatch(message))
+            try
             {
-                var m = r.Match(message);
-
-                CountdownItem ci = new CountdownItem()
+                if (r.IsMatch(message))
                 {
-                    Title = m.Groups[1].Value,
-                    Length = ParseTime(m.Groups[2].Value),
-                    PreCountdown = ParseTime(m.Groups[3].Value)
-                };
-                return ci;
+                    var m = r.Match(message);
+
+                    CountdownItem ci = new CountdownItem()
+                    {
+                        Title = m.Groups[1].Value,
+                        Length = ParseTime(m.Groups[2].Value),
+                        PreCountdown = ParseTime(m.Groups[3].Value)
+                    };
+                    return ci;
+                }
+            }catch(Exception e)
+            {
+                Console.WriteLine(e);
+                // Do nothing
             }
             return CountdownItem.Empty;
         }

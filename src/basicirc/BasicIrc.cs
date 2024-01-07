@@ -134,58 +134,65 @@ public class BasicIrc : IIrc, IDisposable
         ChatMessage msg = new ChatMessage();
         msg.Nick = Nick;
         snr.Nick = Nick;
-        while (_ircTcpClient.Connected && _incomingStream.EndOfStream == false)
+        try
         {
-            if (_ct.IsCancellationRequested)
-                break;
-            string _incoming = null;
-            try
+            while (_ircTcpClient.Connected && _incomingStream.EndOfStream == false)
             {
-                _incoming = _incomingStream.ReadLine();
-            }
-            catch (Exception e)
-            {
-                HandleNetworkFault(e);
-            }
-            if (_incoming == null)
-            {
-                badimebot.Program.ConsoleError("Read blank line from irc server");
-                break;  // end?
-            }
-            irclog.WriteLine(_incoming);
+                if (_ct.IsCancellationRequested)
+                    break;
+                string _incoming = null;
+                try
+                {
+                    _incoming = _incomingStream.ReadLine();
+                }
+                catch (Exception e)
+                {
+                    HandleNetworkFault(e);
+                }
+                if (_incoming == null)
+                {
+                    badimebot.Program.ConsoleError("Read blank line from irc server");
+                    break;  // end?
+                }
+                irclog.WriteLine(_incoming);
 
-            // Parse and fire events
-            if (_incoming.StartsWith("PING"))
-                WriteToServerStream($"PONG {_incoming.Substring(5)}");
-            else
-            if (snr.TryParse(_incoming))
-            {
-                if (snr.ReplyCode == SERVER_MOTD_FINISHED)
-                {
-                    _server_Connected.Set();    // Set flag to allow connection to continue
-                }
-                if (_LookingforServerResponse && snr.ReplyCode == _LookingforServerResponseCode)
-                {
-                    _LookingforServerResponse = false;
-                    _LookingforServerResponseEvent.Set();
-                }
-            }
-            else
-            if (_incoming.Contains("PRIVMSG") && msg.TryParse(_incoming))
-            {
-                if (msg.Channel == null)
-                    this.PrivateMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message });
+                // Parse and fire events
+                if (_incoming.StartsWith("PING"))
+                    WriteToServerStream($"PONG {_incoming.Substring(5)}");
                 else
-                    this.ChannelMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message, Channel = msg.Channel });
-            }
-            else
-            {
-                // ??
-                badimebot.Program.ConsoleError($"Unknown server message: {_incoming}");
-            }
+                if (snr.TryParse(_incoming))
+                {
+                    if (snr.ReplyCode == SERVER_MOTD_FINISHED)
+                    {
+                        _server_Connected.Set();    // Set flag to allow connection to continue
+                    }
+                    if (_LookingforServerResponse && snr.ReplyCode == _LookingforServerResponseCode)
+                    {
+                        _LookingforServerResponse = false;
+                        _LookingforServerResponseEvent.Set();
+                    }
+                }
+                else
+                if (_incoming.Contains("PRIVMSG") && msg.TryParse(_incoming))
+                {
+                    if (msg.Channel == null)
+                        this.PrivateMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message });
+                    else
+                        this.ChannelMessageReceived?.Invoke(this, new MessageArgs() { From = msg.From, Message = msg.Message, Channel = msg.Channel });
+                }
+                else
+                {
+                    // ??
+                    badimebot.Program.ConsoleError($"Unknown server message: {_incoming}");
+                }
 
-            System.Threading.Thread.Sleep(100);
-            System.Threading.Thread.Yield();
+                System.Threading.Thread.Sleep(100);
+                System.Threading.Thread.Yield();
+            }
+        }catch(Exception ioe)
+        {
+            Console.WriteLine("MessagePump: " + ioe.Message);
+            HandleNetworkFault(ioe);
         }
 
         Console.WriteLine("Message pump finished");
@@ -223,7 +230,27 @@ public class BasicIrc : IIrc, IDisposable
     {
         if (_state != ConnectionState.Disconnected)
             return;
-        Connect(_server, Nick);
+        for (int i = 0; i < 30; i++)
+        {
+            try
+            {
+                Connect(_server, Nick);
+                break;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[{i:00}] Failure re-connecting: " + e.Message);
+                if (_state == ConnectionState.Connecting)
+                    _state = ConnectionState.Disconnected;
+                
+                Thread.Sleep(1000);
+            }
+            if(i == 29)
+            {
+                Console.WriteLine("Could not reconnect after 30 tries.  Aborting program");
+                throw new Exception("Fatal reconnect error");
+            }
+        }
         if (!string.IsNullOrEmpty(_currentChannel)) 
             Join(_currentChannel);
     }
