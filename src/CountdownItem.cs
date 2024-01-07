@@ -8,11 +8,20 @@ namespace badimebot
 {
     public struct CountdownItem
     {
+        public bool IsSilent = false;
         public TimeSpan PreCountdown;
         public TimeSpan Length;
         public string Title;
         public DateTime Epoch;
         public static CountdownItem Empty = new CountdownItem();
+        public CountdownItem()
+        {
+            this.PreCountdown = new TimeSpan(0, 15, 0);
+            this.Length = new TimeSpan(0, 25, 0);
+            this.Title = "Default Title";
+            this.Epoch = DateTime.Now;
+
+        }
 
         public static bool operator ==(CountdownItem item1, CountdownItem item2)
         {

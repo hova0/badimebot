@@ -38,7 +38,7 @@ public class BasicIrc : IIrc, IDisposable
     private ManualResetEvent _server_Connected = new ManualResetEvent(false);
     private ConnectionState _state = ConnectionState.Disconnected;
     // Lock reference used for accessing _state variable.  For state changes always lock!
-    private object _lockobject = new object();
+    private object _statelock = new object();
     // Log to file irc traffic (in raw form mostly)
     private System.IO.StreamWriter irclog;
     
@@ -58,7 +58,7 @@ public class BasicIrc : IIrc, IDisposable
     public void Connect(string server, string nick)
     {
         _server_Connected.Reset();
-        lock (_lockobject)
+        lock (_statelock)
         {
             if (_state != ConnectionState.Disconnected)
                 return;
@@ -104,7 +104,7 @@ public class BasicIrc : IIrc, IDisposable
         Nick = nick;
         _server_Connected.WaitOne(5000);
         SetNick(Nick);
-        lock (_lockobject)
+        lock (_statelock)
         {
             _state = ConnectionState.Connected;
         }
@@ -184,7 +184,7 @@ public class BasicIrc : IIrc, IDisposable
                 badimebot.Program.ConsoleError($"Unknown server message: {_incoming}");
             }
 
-            //System.Threading.Thread.Sleep(20);
+            System.Threading.Thread.Sleep(100);
             System.Threading.Thread.Yield();
         }
 
@@ -279,7 +279,7 @@ public class BasicIrc : IIrc, IDisposable
     public void Join(string channel)
     {
         // Leave current channel
-        lock (_lockobject)
+        lock (_statelock)
         {
             if (!String.IsNullOrEmpty(_currentChannel) && _state == ConnectionState.ChannelJoined)
             {
@@ -298,7 +298,7 @@ public class BasicIrc : IIrc, IDisposable
 
         // Successfully joined
         _currentChannel = channel;
-        lock (_lockobject)
+        lock (_statelock)
         {
             _state = ConnectionState.ChannelJoined;
         }
@@ -322,7 +322,7 @@ public class BasicIrc : IIrc, IDisposable
     /// <param name="message"></param>
     public void SendMessage(string message)
     {
-        lock (_lockobject)
+        lock (_statelock)
         {
             if (_state != ConnectionState.ChannelJoined)
                 return;
@@ -358,7 +358,7 @@ public class BasicIrc : IIrc, IDisposable
         System.Threading.Thread.Sleep(50);
         if (_ircTcpClient.Connected == false)
         {
-            lock (_lockobject)
+            lock (_statelock)
             {
                 _state = ConnectionState.Disconnected;
             }
