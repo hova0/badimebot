@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
@@ -10,7 +12,7 @@ namespace badimebot
     {
         private object _lockobject = new object();
 
-      
+
         public enum CountdownState
         {
             Idle,
@@ -26,12 +28,12 @@ namespace badimebot
         // PreCountdown -> Paused
         // Paused -> PreCountdown
 
-        private DateTime PausedStart;
+        //private DateTime PausedStart;
 
         public CountdownQueue<CountdownItem> CountdownList { get; set; } = new CountdownQueue<CountdownItem>();
         public CountdownItem CurrentItem { get; set; } = CountdownItem.Empty;
-        CountdownState _state = CountdownState.Idle;
-        public CountdownState State
+        volatile CountdownState _state = CountdownState.Idle;
+        public  CountdownState State
         { get { return _state; } }
 
         System.Threading.CancellationToken ct;
@@ -60,7 +62,8 @@ namespace badimebot
         };
         private bool disposedValue;
 
-        public CountdownTimer() {
+        public CountdownTimer()
+        {
             cts = new System.Threading.CancellationTokenSource();
             ct = cts.Token;
         }
@@ -75,19 +78,23 @@ namespace badimebot
             item.PreCountdown = Countdown;
 
             CountdownList.Enqueue(item);
+            Debug.WriteLine($"Enqueued {item}");
         }
         public void Enqueue(CountdownItem item)
         {
             CountdownList.Enqueue(item);
+            Debug.WriteLine($"Enqueued {item}");
         }
 
         public void Insert(CountdownItem item, int position)
         {
             CountdownList.Insert(position, item);
+            Debug.WriteLine($"Inserted at {position} item {item}");
         }
 
         public bool Remove(CountdownItem item)
         {
+            Debug.WriteLine($"Removed {item}");
             return CountdownList.Remove(item);
         }
 
@@ -117,6 +124,9 @@ namespace badimebot
         {
             if (_state == CountdownState.Idle)
                 return TimeSpan.Zero;
+            if (_state == CountdownState.Paused)
+                return CurrentItem.PreCountdown;
+
             return DateTime.Now.Subtract(CurrentItem.Epoch);
         }
 
@@ -129,7 +139,7 @@ namespace badimebot
             this.timerthread = new System.Threading.Thread(ts);
             this.timerthread.Start();
             //OnMessageEvent(string.Format("Counting down to {0} in {1}",Title,  countdowntimer));
-
+            Debug.WriteLine("Countdown thread started");
         }
 
         public void Pause()
@@ -139,12 +149,14 @@ namespace badimebot
                 Console.WriteLine("Cannot Pause.  Current state must be PreCountdown but was " + _state.ToString());
                 return;
             }
-            PausedStart = DateTime.Now;
+            //PausedStart = DateTime.Now;
             _state = CountdownState.Paused;
 
             CountdownItem x = CurrentItem;
             x.PreCountdown = CurrentItem.Epoch - DateTime.Now;
-            CountdownList.Insert(0, x);   // Put our current counting down item back in the queue
+            CurrentItem = x;
+            //CountdownList.Insert(0, x);   // Put our current counting down item back in the queue
+            Debug.WriteLine("Countdown Paused");
         }
 
         public void Resume()
@@ -154,23 +166,14 @@ namespace badimebot
                 Console.WriteLine("Cannot Resume.  Current state must be Paused but was " + _state.ToString());
                 return;
             }
-            TimeSpan timetoadd = DateTime.Now - PausedStart;
-            //Console.WriteLine($"**DEBUG** Adding {timetoadd} to countdowns");
 
-            // Add time to all entries by dequeuing and enqueuing them all back 
-            lock (_lockobject)
-            {
-                
-                for (int i = 0; i < CountdownList.Count; i++)
-                {
-                    // update and replace (because it's a struct, not a class)
-                    CountdownItem x = CountdownList[i];
-                    x.Epoch += timetoadd;
-                    CountdownList[i] = x;
-                }
-            }
+            // Set new epoch to Now + time left in countdown           
+            CountdownItem x = CurrentItem;
+            x.Epoch = DateTime.Now.Add(CurrentItem.PreCountdown);
+            CurrentItem = x;
 
             _state = CountdownState.PreCountdown;
+            Debug.WriteLine("Countdown resumed");
         }
 
         /// <summary>
@@ -178,6 +181,7 @@ namespace badimebot
         /// </summary>
         private void CountdownThread()
         {
+            int _alertIndex = 0;
 
             while (ct.IsCancellationRequested == false)
             {
@@ -188,6 +192,7 @@ namespace badimebot
                         break;
                     case CountdownState.Idle:
                         // Idle loop (waiting for items)
+                        // If there are items remaining, it will move to the next and begin countdown
                         while (ct.IsCancellationRequested == false)
                         {
                             lock (_lockobject)
@@ -195,36 +200,37 @@ namespace badimebot
                                 if (CountdownList.Count != 0)
                                 {
                                     _state = CountdownState.PreCountdown;
+                                    CountdownItem _nextItem;
+                                    lock (_lockobject)
+                                    {
+                                        _nextItem = CountdownList.Dequeue();
+                                    }
+                                    _nextItem.Epoch = DateTime.Now.Add(_nextItem.PreCountdown);
+                                    // This moves our alert index forward to where we initially should be
+                                    for (int i = 0; i < Alerts.Length; i++)
+                                    {
+                                        if (Alerts[i] <= _nextItem.PreCountdown)
+                                        {
+                                            _alertIndex = i;
+                                            break;
+                                        }
+                                    }
+                                    CurrentItem = _nextItem;
                                     break;
                                 }
                             }
-                            System.Threading.Thread.Sleep(1000);
+                            System.Threading.Thread.Sleep(250);
                         }
                         break;
                     case CountdownState.PreCountdown:
-                        CountdownItem _nextItem;
-                        lock (_lockobject)
-                        {
-                            _nextItem = CountdownList.Dequeue();
-                        }
-                        _nextItem.Epoch = DateTime.Now.Add(_nextItem.PreCountdown);
-                        CurrentItem = _nextItem;
-
-                        // This moves our alert index forward to where we initially should be
-                        int _alertIndex = 0;
-                        for (int i = 0; i < Alerts.Length; i++)
-                            if (Alerts[i] <= CurrentItem.PreCountdown)
-                            {
-                                _alertIndex = i;
-                                break;
-                            }
                         // Main pre-countdown loop. 
-                        while (ct.IsCancellationRequested == false)
-                        {
+                        //while (ct.IsCancellationRequested == false)
+                        //{
+                            //if (_state != CountdownState.PreCountdown)  // Happens when paused
+                            //    break;
                             if ((CurrentItem.Epoch - DateTime.Now) < Alerts[_alertIndex])
                             {
                                 // alart
-                                //Console.WriteLine($"{(CurrentItem.Epoch - DateTime.Now).TotalSeconds} < {Alerts[_alertIndex]}");
                                 PrintAlert(CurrentItem, Alerts[_alertIndex]);
                                 if (_alertIndex == Alerts.Length - 1)
                                 {   // Ran out of alerts, less than one second left
@@ -236,7 +242,7 @@ namespace badimebot
                             System.Threading.Thread.Sleep(100);
                             if (_state != CountdownState.PreCountdown)
                                 break;
-                        }
+                        //}
                         break;
                     case CountdownState.PostCountdown:
                         if (DateTime.Now > (CurrentItem.Epoch + CurrentItem.Length))
@@ -252,13 +258,13 @@ namespace badimebot
                                 }
                                 else
                                 {
-                                    // Move to next anime  (PreCountdown will dequeue)
-                                    _state = CountdownState.PreCountdown;
+                                    // Move to next anime  (Idle will dequeue)
+                                    _state = CountdownState.Idle;
                                 }
                             }
                         }
                         // Long sleep
-                        System.Threading.Thread.Sleep(1000);
+                        System.Threading.Thread.Sleep(100);
                         break;
                 }
             }
@@ -273,9 +279,9 @@ namespace badimebot
                 OnMessageEvent($"{item.Title} elapsed time is {DateTime.Now - item.Epoch}");
             else if (state == CountdownState.PreCountdown)
             {
-                if(alerttime >= TimeSpan.FromSeconds(10))
+                if (alerttime >= TimeSpan.FromSeconds(10))
                     OnMessageEvent($"{item.Title} in {alerttime}");
-                else if(alerttime == TimeSpan.FromSeconds(0))
+                else if (alerttime == TimeSpan.FromSeconds(0))
                     OnMessageEvent($"{item.Title} starting!");
                 else
                     OnMessageEvent($"{alerttime.TotalSeconds}");

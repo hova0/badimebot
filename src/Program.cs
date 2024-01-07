@@ -64,7 +64,7 @@ namespace badimebot
         private static void Si_PrivateMessageReceived(object x, MessageArgs y)
         {
             if (IsValidBotCommand(y.Message, "badime"))
-                irc.PrivateMessage(y.From, string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
+                irc.PrivateMessage(y.From, GetBadimeMessageResponse(animetimer));
             if (y.From == "hova")
             {
                 string firstword = y.Message.Trim();
@@ -76,6 +76,8 @@ namespace badimebot
                     PrintToConsoleWithColor("Shutdown request received, exiting program", ConsoleColor.Red);
                     irc.Disconnect($"{y.From} told me to quit");
                     animetimer.Stop();
+                    irc.Dispose();
+                    animetimer.Dispose();
                     Environment.Exit(0);
                 }
 
@@ -125,8 +127,25 @@ namespace badimebot
         {
             //Only respond to the !badime trigger
             if (IsValidBotCommand(y.Message, "badime"))
-                irc.SendMessage(string.Format("Time Elapsed {0}", animetimer.GetElapsedTime()));
+                irc.SendMessage(GetBadimeMessageResponse(animetimer));
 
+        }
+
+        private static string GetBadimeMessageResponse(CountdownTimer countdowmTimer)
+        {
+            switch (countdowmTimer.State)
+            {
+                case CountdownTimer.CountdownState.Idle:
+                    return "Nothing currently queued";
+                case CountdownTimer.CountdownState.PreCountdown:
+                    return string.Format("Counting down to {1} in  {0}", animetimer.GetElapsedTime() * -1, animetimer.CurrentItem.Title);
+                case CountdownTimer.CountdownState.Paused:
+                    return $"Currently paused at {animetimer.GetElapsedTime()}";
+                case CountdownTimer.CountdownState.PostCountdown:
+                    return string.Format("Time Elapsed {0}", animetimer.GetElapsedTime());
+                default:
+                    return string.Format("Time Elapsed {0}", animetimer.GetElapsedTime());
+            }
         }
 
         public static bool IsValidBotCommand(string fullmessage, string expectedcommand)
