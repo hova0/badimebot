@@ -33,7 +33,7 @@ namespace badimebot
         public CountdownQueue<CountdownItem> CountdownList { get; set; } = new CountdownQueue<CountdownItem>();
         public CountdownItem CurrentItem { get; set; } = CountdownItem.Empty;
         volatile CountdownState _state = CountdownState.Idle;
-        public  CountdownState State
+        public CountdownState State
         { get { return _state; } }
 
         System.Threading.CancellationToken ct;
@@ -224,25 +224,20 @@ namespace badimebot
                         break;
                     case CountdownState.PreCountdown:
                         // Main pre-countdown loop. 
-                        //while (ct.IsCancellationRequested == false)
-                        //{
-                            //if (_state != CountdownState.PreCountdown)  // Happens when paused
-                            //    break;
-                            if ((CurrentItem.Epoch - DateTime.Now) < Alerts[_alertIndex])
-                            {
-                                // alart
-                                PrintAlert(CurrentItem, Alerts[_alertIndex]);
-                                if (_alertIndex == Alerts.Length - 1)
-                                {   // Ran out of alerts, less than one second left
-                                    _state = CountdownState.PostCountdown;
-                                    break;
-                                }
-                                _alertIndex++;
-                            }
-                            System.Threading.Thread.Sleep(100);
-                            if (_state != CountdownState.PreCountdown)
+                        if ((CurrentItem.Epoch - DateTime.Now) < Alerts[_alertIndex])
+                        {
+                            // alart
+                            PrintAlert(CurrentItem, Alerts[_alertIndex]);
+                            if (_alertIndex == Alerts.Length - 1)
+                            {   // Ran out of alerts, less than one second left
+                                _state = CountdownState.PostCountdown;
                                 break;
-                        //}
+                            }
+                            _alertIndex++;
+                        }
+                        System.Threading.Thread.Sleep(100);
+                        if (_state != CountdownState.PreCountdown)
+                            break;
                         break;
                     case CountdownState.PostCountdown:
                         if (DateTime.Now > (CurrentItem.Epoch + CurrentItem.Length))
