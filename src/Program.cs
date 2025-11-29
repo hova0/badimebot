@@ -15,10 +15,12 @@ namespace badimebot
             string server = "127.0.0.1";
             string channel = "#badimebottest";
             string AuthorizedNick = "hova";
-            if (args.Length == 2)
+            if (args.Length >= 2)
             {
                 server = args[0];
                 channel = args[1];
+            } else {
+                Console.WriteLine("No server and channel specified on command line, defaulting to 127.0.0.1 #badimebottest");
             }
             if (args.Length >= 3)
                 AuthorizedNick = args[2];
