@@ -97,13 +97,16 @@ public class BasicIrc : IIrc, IDisposable
             irclog.WriteLine($"Connected to {server}:6667");
         }
 
-
+        _server_Connected.Reset();
         _outgoingStream.AutoFlush = true;
         _MessagePumpThread = new System.Threading.Thread(_MessagePump);
         _MessagePumpThread.Start();
+        // For some reason, the MOTD won't be set unless we set our nick first
         Nick = nick;
-        _server_Connected.WaitOne(5000);
+        Thread.Sleep(2000);
         SetNick(Nick);
+        
+        _server_Connected.WaitOne(30000);
         lock (_statelock)
         {
             _state = ConnectionState.Connected;
@@ -164,6 +167,7 @@ public class BasicIrc : IIrc, IDisposable
                 {
                     if (snr.ReplyCode == SERVER_MOTD_FINISHED)
                     {
+                        Console.WriteLine("DEBUGTRACE: MOTD FInished");
                         _server_Connected.Set();    // Set flag to allow connection to continue
                     }
                     if (_LookingforServerResponse && snr.ReplyCode == _LookingforServerResponseCode)
@@ -305,6 +309,7 @@ public class BasicIrc : IIrc, IDisposable
     /// <param name="channel"></param>
     public void Join(string channel)
     {
+        
         // Leave current channel
         lock (_statelock)
         {
